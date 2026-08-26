@@ -2,9 +2,10 @@
 
 이 문서는 milestone 체크리스트와 각 phase의 gate 통과 여부, 다음 session이 이어갈 정확한 지점을 기록한다. 새 session은 `docs/PRODUCT_SPEC.md`, 이 문서, `git log`, 실패 테스트를 먼저 읽고 이어간다.
 
-## 현재 상태 요약 (2026-08-26, 6차/최종 업데이트)
+## 현재 상태 요약 (2026-08-26, 7차/최종 업데이트)
 
-- Phase 0~8 전부 완료. 이전 업데이트에서 "이 sandbox에서 할 수 없다"고 적었던 5개 항목 중 4개(Inno Setup installer 컴파일+설치/제거 검증, 실제 NCBI BLAST+ 바이너리 검증, BLAST job 취소 UI, GFF3/qualifier 편집기 등은 이미 완료)를 이번 세션에서 실제로 완료했다. 남은 것은 "완전히 별도의 clean Windows 계정/VM 검증"과 "GitHub Actions 실제 실행"뿐이다 — 아래 참고.
+- Phase 0~8 전부 완료. 이전 업데이트에서 "이 sandbox에서 할 수 없다"고 적었던 5개 항목을 이번 세션에서 전부 완료했다: Inno Setup installer 컴파일+설치/제거 검증, 실제 NCBI BLAST+ 바이너리 검증, BLAST job 취소 UI, **그리고 GitHub 원격 저장소 push + 실제 GitHub Actions 실행까지.** 남은 것은 순수하게 "이 개발 머신 자체로는 대체할 수 없는 것"(완전히 별도의 clean Windows 계정/VM에서의 **installer** 설치 검증)뿐이다 — 아래 참고.
+- **GitHub**: 사용자 승인 하에 `https://github.com/dudrnjs8300/genome-workbench`(public) 생성, 전체 히스토리 push, `test.yml`(품질 게이트) + `windows-release.yml`(실제 빌드+패키징+clean 러너 exe 검증) 둘 다 실제로 실행해 통과 확인. 이 과정에서 (1) `test.yml`이 `main`만 감시해 `master` push에 전혀 반응하지 않던 설정 버그, (2) `windows-release.yml`이 pwsh에서 exe를 직접 호출할 때 stdout/stderr가 캡처되지 않아 원인 불명으로 실패하던 문제(→ `Start-Process` 명시적 리다이렉트로 해결)를 발견해 고쳤다.
 - 전체 테스트: **192 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`; 실제 BLAST+ 테스트 2건 포함하며 BLAST+ 미설치 환경에서는 자동 skip).
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench` 모두 clean.
 - Portable ZIP + **Installer(.exe)** 둘 다 빌드/검증 완료: `release/GenomeWorkbench-0.1.0-win-x64-portable.zip`, `release/GenomeWorkbench-0.1.0-win-x64-setup.exe` (+ 각각 `.sha256`). Installer는 silent 설치(관리자 권한 불필요, `%LOCALAPPDATA%\Programs`) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 머신에서 실제로 검증됨.
@@ -126,14 +127,14 @@
 
 ## 다음 session이 있다면 시작할 지점
 
-P0 핵심 기능은 전부 구현·테스트되었고, 이전에 "sandbox 환경에서 할 수 없다"고 적었던 5개 항목 중 4개를 이번 세션에서 완료했다. 진짜로 남은 것은 이 개발 머신 자체의 한계로 여기서는 못 하는 두 가지뿐이다:
+P0 핵심 기능은 전부 구현·테스트되었다. 진짜로 남은 것은 이 개발 머신 자체의 한계로 여기서는 못 하는 한 가지뿐이다:
 
-1. **완전히 별도의 clean Windows 사용자 계정 또는 VM**에서 installer 설치/실행/제거 검증 (spec AT-10) — 이 개발 머신은 이미 Python/개발 도구가 설치된 환경이라 "아무것도 없는 머신에서도 동작하는가"를 완벽히 대체하지 못한다. Installer 자체는 이 머신에서 silent 설치/제거까지 실증됨(`docs/RELEASE_TEST_REPORT.md` AT-10 참고).
-2. 원격 저장소에 push하고 실제 GitHub Actions에서 `.github/workflows/*.yml` 실행 확인 (사용자 승인 필요 — destructive/외부 공개 작업이므로 자동으로 진행하지 않음).
+1. **완전히 별도의 clean Windows 사용자 계정 또는 VM**에서 **installer(.exe)** 설치/실행/제거 검증 (spec AT-10) — installer는 이 개발 머신에서 silent 설치/제거까지 실증되었고, 패키징된 exe 자체는 GitHub Actions의 진짜 clean `windows-latest` 러너에서도 검증되었지만(`https://github.com/dudrnjs8300/genome-workbench/actions/runs/32968044295`), installer(.exe)의 설치 과정 자체를 GitHub Actions는 다루지 않으므로 "완전히 별도의 사람/머신"에서의 installer 검증만 남아있다.
 
 부가적으로 남은 더 작은 gap:
-3. blastp(protein) 경로 UI 계층(dispatch/dialog) 전용 자동 테스트 — 서비스 계층은 실제 BLAST+로 검증됨(`test_blast_real_installation.py`), UI 계층은 blastn 경로만 있음. Program 값과 무관하게 동일한 코드 경로라 위험은 낮음.
-4. blastx/tblastn(번역 검색) frame 좌표 매핑의 실제 바이너리 검증 — blastn/blastp만 실제 바이너리로 검증됨.
+2. blastp(protein) 경로 UI 계층(dispatch/dialog) 전용 자동 테스트 — 서비스 계층은 실제 BLAST+로 검증됨(`test_blast_real_installation.py`), UI 계층은 blastn 경로만 있음. Program 값과 무관하게 동일한 코드 경로라 위험은 낮음.
+3. blastx/tblastn(번역 검색) frame 좌표 매핑의 실제 바이너리 검증 — blastn/blastp만 실제 바이너리로 검증됨.
+4. GitHub repo(`https://github.com/dudrnjs8300/genome-workbench`)가 아직 이 로컬 checkout과 완전히 동기화되지 않은 후속 커밋이 있는지 `git status`/`git log origin/master..master`로 항상 먼저 확인할 것 — 이제 원격이 존재하므로 앞으로는 세션마다 push 여부를 사용자에게 확인해야 한다(자동으로 push하지 않음).
 
 ## 알려진 리스크 / 재검증 필요 항목
 

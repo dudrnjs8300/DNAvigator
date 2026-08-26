@@ -19,3 +19,4 @@ release/
 *.gwbproj.lock
 /logs/
 /scratch/
+/.claude/

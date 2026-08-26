@@ -47,5 +47,5 @@
 
 ## 테스트
 
-- **GitHub Actions에서 실제로 실행되지 않음.** `.github/workflows/*.yml`은 작성되었고 로컬에서 동일 명령으로 수동 검증했지만, 원격 저장소 push 및 실제 Actions 실행 확인은 사용자 승인이 필요하다.
+- **GitHub Actions에서 실제로 실행되어 통과함.** `https://github.com/dudrnjs8300/genome-workbench`(public)에 push하고 두 workflow를 모두 실제로 돌렸다: `test.yml`(ruff/mypy/pytest/self-test, 1분 24초, 통과)과 `windows-release.yml`(실제 PyInstaller 빌드 → 패키징된 exe의 `--self-test`/`--smoke-test`를 GitHub 호스팅 Windows 러너 — 이 개발 머신과 달리 Python/BLAST 등 아무것도 미리 설치되어 있지 않은 진짜 clean 환경 — 에서 실행, 통과, portable ZIP artifact 업로드까지 확인). 이 과정에서 두 가지를 발견해 고쳤다: (1) `test.yml`이 `main` 브랜치만 감시하고 있었는데 실제 기본 브랜치는 `master`라서 push해도 전혀 트리거되지 않던 설정 버그, (2) 패키징된 exe를 pwsh에서 `.\exe --self-test`처럼 직접 호출하면 첫 실행에서 stdout/stderr가 전혀 캡처되지 않고 원인 불명으로 실패했는데, `Start-Process -RedirectStandardOutput/-RedirectStandardError`로 명시적으로 리다이렉트하도록 바꾸자 재실행에서 정상적으로 통과하고 진단 JSON까지 로그에 남았다(D-005의 console 부착 취약성과 같은 계열의 증상으로 추정). AT-10이 요구하는 "완전히 별도의 clean Windows 환경"의 상당 부분을 이 GitHub 러너가 대체 검증하지만, installer(.exe) 자체의 설치/제거는 이 workflow가 다루지 않으므로 AT-10은 여전히 부분 검증 상태다.
 - **`QMenu.exec()`는 자동화 테스트에서 monkeypatch로 가로챌 수 없음** (PySide6/Shiboken 바인딩 메서드 특성). `ui/main_window.py`의 컨텍스트 메뉴 로직은 "메뉴 표시"(`_on_canvas_context_menu`)와 "동작 처리"(`_dispatch_selection_action`)로 분리되어 있고, 테스트는 후자를 직접 호출한다. 새로운 QMenu 기반 UI를 추가할 때 이 패턴을 재사용할 것.

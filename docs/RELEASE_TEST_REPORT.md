@@ -11,7 +11,8 @@
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench`: 모두 clean
 - Windows 실행파일(onedir) 빌드 성공, `--self-test`/`--smoke-test` exit code 0
 - Portable ZIP: 별도 임시 경로 및 한글/공백 경로로 압축 해제 후 `--self-test` exit code 0 확인
-- Installer: Inno Setup 6로 컴파일 성공, silent 설치(관리자 권한 불필요) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 개발 머신에서 검증. **완전히 별도의 clean Windows 사용자 계정/VM에서의 검증은 아직 하지 못함** (AT-10 참고)
+- Installer: Inno Setup 6로 컴파일 성공, silent 설치(관리자 권한 불필요) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 개발 머신에서 검증. 패키징된 exe 자체는 GitHub Actions의 clean `windows-latest` 러너에서도 별도로 검증됨. **installer의 완전히 별도인 clean Windows 계정/VM 설치 검증만 아직 하지 못함** (AT-10 참고)
+- GitHub Actions: `test.yml`(품질 게이트)과 `windows-release.yml`(실제 빌드+패키징+clean 러너 exe 검증) 모두 실제로 push/실행해 통과 확인(`https://github.com/dudrnjs8300/genome-workbench`)
 - 실제 NCBI BLAST+ 2.17.0(win64) 바이너리: 공식 NCBI FTP에서 설치(MD5 확인)해 blastn/blastp/database 생성/좌표 매핑/annotation 적용까지 실제로 검증(아래 AT-06/AT-07 참고). 대역(mock) 실행파일 기반 테스트도 회귀 검증용으로 계속 유지.
 
 ## AT-01 FASTA manual annotation round-trip
@@ -52,7 +53,7 @@
 
 ## AT-10 Windows clean-machine
 
-**부분 검증 — installer는 이 개발 머신에서 실제 설치/제거 검증됨, 완전히 별도의 clean 계정/VM은 아직 없음.** 이번 세션에서 다음을 실제로 수행했다:
+**부분 검증 — installer는 이 개발 머신에서, 패키징된 exe는 GitHub Actions의 진짜 clean 러너에서 검증됨. installer 자체의 완전히 별도인 clean 계정/VM 설치 검증만 아직 없음.** 이번 세션에서 다음을 실제로 수행했다:
 - `iscc installer\genome_workbench.iss`로 installer(`GenomeWorkbench-0.1.0-win-x64-setup.exe`) 컴파일 성공.
 - `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LANG=english`로 silent 설치 — `PrivilegesRequired=lowest` 설정대로 관리자 권한 없이 `%LOCALAPPDATA%\Programs\GenomeWorkbench`에 설치됨.
 - 설치된 실행파일의 `--self-test`/`--smoke-test` 모두 exit code 0, Start Menu 바로가기(`GenomeWorkbench.lnk`) 생성 확인.
@@ -60,12 +61,13 @@
 - (참고) 언어를 2개 이상 등록하면 `/VERYSILENT`만으로는 언어 선택 대화상자가 떠서 자동화 설치가 멈춘다 — `/LANG=`을 함께 지정해야 한다. 대화형(GUI) 설치에서는 해당되지 않는 제약이다.
 - `--self-test`의 `blast_executable` 항목은 실제 탐지를 하지 않는 정적 안내 필드이며 `optional: true`로 표시되어 core 실패를 유발하지 않는다 — 이는 실제 NCBI BLAST+ 설치 여부와 무관하게(이 머신에는 이후 실제로 BLAST+를 설치했다) 동일하게 동작함을 확인.
 - Portable ZIP을 완전히 다른 임시 경로(및 한글/공백 경로)에 압축 해제해 `--self-test`를 확인 — "이 실행파일 자체가 별도 Python 설치 없이 독립 실행됨"도 검증됨.
+- **GitHub Actions의 `windows-latest` 러너에서 패키징된 exe를 실제로 실행해 검증함** — 이 러너는 이 개발 머신과 달리 Python/BLAST/기타 개발 도구가 전혀 미리 설치되어 있지 않은 진짜 clean 환경이다(`https://github.com/dudrnjs8300/genome-workbench/actions/runs/32968044295`). PyInstaller로 처음부터 빌드 → 패키징된 `GenomeWorkbench.exe --self-test`/`--smoke-test` 모두 exit code 0, portable ZIP artifact 업로드까지 확인. 첫 실행 시도에서는 stdout/stderr가 전혀 캡처되지 않고 원인 불명으로 실패했는데, pwsh에서 `.\exe args`로 직접 호출하는 대신 `Start-Process -RedirectStandardOutput/-RedirectStandardError`로 명시적 리다이렉트하도록 바꾸자 재실행에서 정상 통과했다(D-005의 console 부착 취약성과 같은 계열로 추정). 이 발견은 실제 사용자가 GUI로 더블클릭 실행할 때는 해당되지 않지만(콘솔 붙임 로직은 CLI 플래그가 있을 때만 동작), 향후 CLI 자동화(스크립트/CI)에서 이 exe를 호출할 때는 참고할 것.
 
-여전히 남은 것: **완전히 새로운 Windows 사용자 계정 또는 clean VM**에서의 검증(이 개발 머신은 Python/개발 도구가 이미 설치된 환경이라, "이 머신에 아무것도 없어도 동작하는가"를 완벽히 대체하지 못한다), 그리고 BLAST Setup Wizard를 통한 실제 BLAST+ 인식 노출 확인.
+여전히 남은 것: **완전히 새로운 Windows 사용자 계정 또는 clean VM에서의 installer(.exe) 설치/제거 검증**(위 GitHub Actions 검증은 portable exe만 다루고 installer는 다루지 않는다), 그리고 BLAST Setup Wizard를 통한 실제 BLAST+ 인식 노출 확인.
 
 ## 결론
 
-P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer의 설치/실행/제거, BLAST 파이프라인(blastn/blastp) 실제 바이너리 검증, BLAST job 취소 UI까지 모두 이 개발 머신에서 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
-- 완전히 별도의 clean Windows 사용자 계정/VM에서의 installer 설치 검증
+P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer의 설치/실행/제거, BLAST 파이프라인(blastn/blastp) 실제 바이너리 검증, BLAST job 취소 UI, 그리고 GitHub Actions 실제 실행(clean 러너에서의 패키징 exe 검증 포함)까지 모두 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
+- 완전히 별도의 clean Windows 사용자 계정/VM에서의 **installer(.exe)** 설치 검증(패키징된 exe 자체는 GitHub Actions clean 러너에서 검증됨 — installer만 남음)
 - blastp 경로의 UI 계층(dispatch/dialog) 전용 자동 테스트(서비스 계층은 실제 바이너리로 검증됨)
 - blastx/tblastn(번역 검색) frame 좌표 매핑의 실제 바이너리 검증(blastn/blastp만 검증됨)
