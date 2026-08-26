@@ -51,3 +51,4 @@ jobs:
           name: GenomeWorkbench-windows-x64
           path: |
             GenomeWorkbench-portable-win-x64.zip
+
