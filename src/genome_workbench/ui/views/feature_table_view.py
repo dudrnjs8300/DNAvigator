@@ -21,6 +21,7 @@ class FeatureTableView(QTableWidget):
     featureSelected = Signal(str)  # feature id
     batchEditQualifiersRequested = Signal(list)  # list[str] feature ids
     applyTemplateRequested = Signal(list)  # list[str] feature ids
+    batchBlastRequested = Signal(list)  # list[str] feature ids
 
     def __init__(self, parent=None) -> None:
         super().__init__(0, len(_COLUMNS), parent)
@@ -103,8 +104,11 @@ class FeatureTableView(QTableWidget):
         menu = QMenu(self)
         batch_edit = menu.addAction(f"Batch Edit Qualifiers... ({len(feature_ids)} selected)")
         apply_template = menu.addAction(f"Apply Template... ({len(feature_ids)} selected)")
+        batch_blast = menu.addAction(f"Run BLAST on Selected... ({len(feature_ids)} selected)")
         chosen = menu.exec(self.viewport().mapToGlobal(position))
         if chosen is batch_edit:
             self.batchEditQualifiersRequested.emit(feature_ids)
         elif chosen is apply_template:
             self.applyTemplateRequested.emit(feature_ids)
+        elif chosen is batch_blast:
+            self.batchBlastRequested.emit(feature_ids)

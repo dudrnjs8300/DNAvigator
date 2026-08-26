@@ -37,13 +37,14 @@ from genome_workbench.domain.blast_models import (
     suggest_program,
 )
 from genome_workbench.domain.events import EventType
-from genome_workbench.domain.locations import LocationPart
+from genome_workbench.domain.locations import LocationPart, extract_sequence
 from genome_workbench.domain.models import Feature, SequenceRecord, Topology
 from genome_workbench.infrastructure.filesystem.annotation_templates import load_templates
 from genome_workbench.infrastructure.filesystem.project_lock import ProjectLockedError
 from genome_workbench.ui.actions import make_action
 from genome_workbench.ui.dialogs.add_feature_dialog import AddFeatureDialog
 from genome_workbench.ui.dialogs.apply_blast_hit_dialog import ApplyBlastHitDialog
+from genome_workbench.ui.dialogs.batch_blast_results_dialog import BatchBlastResultsDialog
 from genome_workbench.ui.dialogs.batch_qualifier_dialog import BatchQualifierDialog
 from genome_workbench.ui.dialogs.blast_setup_dialog import BlastSetupDialog
 from genome_workbench.ui.dialogs.create_blast_database_dialog import CreateBlastDatabaseDialog
@@ -85,6 +86,7 @@ class MainWindow(QMainWindow):
         self._pending_query_start0 = 0
         self._pending_query_end0 = 0
         self._last_blast_result: BlastSearchResult | None = None
+        self._batch_blast_features: dict[str, Feature] = {}
 
         self._build_docks()
         self._build_central_tabs()
@@ -159,6 +161,7 @@ class MainWindow(QMainWindow):
             self._on_batch_edit_qualifiers_requested
         )
         self.feature_table.applyTemplateRequested.connect(self._on_apply_template_requested)
+        self.feature_table.batchBlastRequested.connect(self._on_batch_blast_requested)
         self._tabs.addTab(self.feature_table, "Feature Table")
 
         self.setCentralWidget(self._tabs)
@@ -1132,6 +1135,101 @@ class MainWindow(QMainWindow):
         self._log(f"BLAST search complete: {len(result.hits)} hit(s)")
         self._active_worker = None
         self.blast_panel.set_job_running(False)
+
+    def _on_batch_blast_requested(self, feature_ids: list) -> None:
+        if not self._guard_project_open():
+            return
+        if self._active_worker is not None:
+            QMessageBox.information(
+                self, "Batch BLAST", "A BLAST job is already running. Cancel it first."
+            )
+            return
+        if self._current_record is None:
+            return
+        features = [f for f in (self._find_current_feature(fid) for fid in feature_ids) if f]
+        if len(features) < 2:
+            return
+        if not self.blast_service.list_databases():
+            QMessageBox.information(
+                self,
+                "Batch BLAST",
+                "No BLAST database registered yet. Use BLAST > Create Database... first.",
+            )
+            return
+        database = self.blast_panel.selected_database()
+        if database is None:
+            QMessageBox.information(self, "Batch BLAST", "Select a database first.")
+            return
+        program = self.blast_panel.selected_program()
+        if not self._blast_installation.has(program.value):
+            QMessageBox.warning(
+                self,
+                "Batch BLAST",
+                f"{program.value} is not available. Run BLAST Setup first.",
+            )
+            return
+        params = self.blast_panel.search_parameters()
+
+        record = self._current_record
+        jobs_dir = self.blast_service.work_dir / "jobs"
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+        queries = []
+        for feature in features:
+            sequence = extract_sequence(
+                record.sequence, feature.parts, feature.strand, record.length
+            )
+            query_fasta = jobs_dir / f"batch_query_{feature.id}.fasta"
+            query_fasta.write_text(f">{feature.computed_label()}\n{sequence}\n", encoding="utf-8")
+            queries.append(
+                (
+                    feature.id,
+                    query_fasta,
+                    record.id,
+                    feature.start0,
+                    feature.end0,
+                    feature.strand or 1,
+                )
+            )
+
+        self._batch_blast_features = {f.id: f for f in features}
+        self._log(
+            f"Running batch {program.value} against '{database.name}' "
+            f"for {len(queries)} feature(s)..."
+        )
+        worker = CallableWorker(
+            self.blast_service.run_batch_search,
+            self._blast_installation,
+            database,
+            program,
+            queries,
+            params,
+        ).with_cancel_support()
+        worker.succeeded.connect(self._on_batch_blast_finished)
+        worker.failed.connect(lambda msg: self._on_blast_job_failed("Batch BLAST", msg))
+        self._active_worker = worker
+        self.blast_panel.set_job_running(
+            True, f"Batch {program.value} on {len(queries)} feature(s)..."
+        )
+        worker.start()
+
+    def _on_batch_blast_finished(self, results: list) -> None:
+        self._active_worker = None
+        self.blast_panel.set_job_running(False)
+        self._log(f"Batch BLAST complete: {len(results)} feature(s) processed")
+        if self._current_record is None:
+            return
+        dialog = BatchBlastResultsDialog(
+            results,
+            self._batch_blast_features,
+            self._current_record,
+            self.blast_service,
+            self.annotation_service,
+            self,
+        )
+        dialog.exec()
+        if dialog.applied_feature_ids:
+            self._refresh_features_only()
+            self._log(f"Applied {len(dialog.applied_feature_ids)} hit(s) from batch BLAST")
 
     def _on_cancel_blast_job(self) -> None:
         if self._active_worker is not None:

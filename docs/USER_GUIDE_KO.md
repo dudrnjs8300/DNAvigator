@@ -107,8 +107,9 @@ Feature Table 탭에서 여러 행을 **Ctrl/Shift-클릭**으로 다중 선택�
 
 - **Batch Edit Qualifiers...**: **Set**(기존 값을 덮어씀) / **Add**(기존 값 유지하고 추가, multi-value qualifier에 적합) / **Remove**(해당 qualifier 삭제, 원래 없던 feature는 건드리지 않음) 중 선택해 선택된 모든 feature에 한 번에 적용한다.
 - **Apply Template...**: 저장해 둔 annotation template(아래 참고)의 type과 qualifier를 선택된 모든 feature에 한 번에 적용한다. Template에서 비워둔 필드는 기존 값을 지우지 않는다.
+- **Run BLAST on Selected...**: 하단 BLAST 패널에서 고른 database/program/parameter로 선택된 모든 feature를 순서대로 검색한다(각 feature 고유의 strand·join 구조를 반영해 실제 생물학적 서열로 query를 만든다). 끝나면 feature별 최상위 hit 요약 표가 뜬다 — 행을 선택하고 **Review & Apply Selected...**를 누르면 단일 BLAST와 똑같이 미리보기 대화상자를 거쳐야만 annotation이 적용된다(자동 적용 없음). 검색 도중에는 BLAST 패널의 **Cancel Job**으로 중단할 수 있다.
 
-두 작업 모두 **Undo 한 번**으로 전체를 되돌릴 수 있다(여러 feature가 바뀌어도 하나의 실행 취소 단계로 처리됨).
+**Batch Edit Qualifiers...**와 **Apply Template...**는 **Undo 한 번**으로 전체를 되돌릴 수 있다(여러 feature가 바뀌어도 하나의 실행 취소 단계로 처리됨). BLAST는 annotation 적용 자체가 개별 확인을 거치므로 각 적용 건이 별도의 undo 단계다.
 
 **Annotation template**은 `Add Annotation...` 대화상자에서도 사용할 수 있다: type과 gene/product/note/transl_table을 입력한 뒤 **Save as Template...**로 이름을 붙여 저장하면, 다음에 새 feature를 만들 때 **Template** 드롭다운에서 선택해 즉시 값을 채울 수 있다. 필요 없어지면 **Delete Template**로 지운다. Template은 project가 아니라 사용자 컴퓨터 전체에 저장되어 다른 project에서도 재사용된다.
 

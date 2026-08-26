@@ -172,7 +172,16 @@ class BlastService:
         command = build_search_command(
             program_path, query_fasta, Path(database.path_prefix), params
         )
-        raw_output_path = self._work_dir / "jobs" / f"{database.id}_{program.value}.tsv"
+        # Keyed on the query's own content (not just database+program) so
+        # back-to-back searches -- e.g. one per feature in a batch BLAST run
+        # -- each keep their own raw output file instead of overwriting a
+        # single shared path, which would otherwise leave every earlier
+        # result's Provenance.raw_result_ref pointing at the last query's
+        # output by the time a batch finishes.
+        query_checksum = sha256_of_file(query_fasta)
+        raw_output_path = (
+            self._work_dir / "jobs" / f"{database.id}_{program.value}_{query_checksum[:16]}.tsv"
+        )
         result = run_search_to_file(command, raw_output_path, cancel_event=cancel_event)
         parsed = parse_tabular_output(result.stdout)
         _translate_ids_back(parsed.hits, database.id_map)
@@ -181,7 +190,7 @@ class BlastService:
         search_result = BlastSearchResult(
             program=program,
             database_id=database.id,
-            query_checksum=sha256_of_file(query_fasta),
+            query_checksum=query_checksum,
             parameters=params,
             hits=parsed.hits,
             raw_output_path=str(raw_output_path),
@@ -198,6 +207,43 @@ class BlastService:
                 f"{program.value} vs '{database.name}': {len(parsed.hits)} hit(s)",
             )
         return search_result
+
+    def run_batch_search(
+        self,
+        installation: BlastInstallation,
+        database: BlastDatabase,
+        program: BlastProgram,
+        queries: list[tuple[str, Path, str, int, int, int]],
+        params: BlastSearchParameters,
+        cancel_event: threading.Event | None = None,
+    ) -> list[tuple[str, BlastSearchResult]]:
+        """Runs one BLAST search per query, sequentially -- e.g. one per
+        feature selected in the Feature Table for a "batch BLAST" run.
+        Each ``queries`` entry is ``(feature_id, query_fasta, record_id,
+        start0, end0, strand)``. Checks cancellation both inside each
+        individual subprocess call and between queries, so cancelling
+        mid-batch stops promptly rather than finishing every remaining
+        query first. Returns ``(feature_id, result)`` pairs for whichever
+        queries completed before a cancellation (if any).
+        """
+        results: list[tuple[str, BlastSearchResult]] = []
+        for feature_id, query_fasta, record_id, start0, end0, strand in queries:
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            result = self.run_search(
+                installation,
+                database,
+                program,
+                query_fasta,
+                params,
+                query_source_record_id=record_id,
+                query_source_start0=start0,
+                query_source_end0=end0,
+                query_source_strand=strand,
+                cancel_event=cancel_event,
+            )
+            results.append((feature_id, result))
+        return results
 
     # -- Annotation application --------------------------------------------------
 
