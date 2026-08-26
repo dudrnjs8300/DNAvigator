@@ -99,6 +99,14 @@ class MainWindow(QMainWindow):
         self.explorer_dock = ProjectExplorerDock(self)
         self.explorer_dock.recordSelected.connect(self._on_record_selected)
         self.explorer_dock.topologyChangeRequested.connect(self._on_topology_change_requested)
+        self.explorer_dock.deleteRecordRequested.connect(self._on_delete_record_requested)
+        self.explorer_dock.moveRecordToFolderRequested.connect(
+            self._on_move_record_to_folder_requested
+        )
+        self.explorer_dock.createFolderRequested.connect(self._on_create_folder_requested)
+        self.explorer_dock.renameFolderRequested.connect(self._on_rename_folder_requested)
+        self.explorer_dock.deleteFolderRequested.connect(self._on_delete_folder_requested)
+        self.explorer_dock.moveFolderRequested.connect(self._on_move_folder_requested)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.explorer_dock)
 
         self.inspector_dock = InspectorDock(self)
@@ -278,11 +286,12 @@ class MainWindow(QMainWindow):
 
     def _refresh_project_explorer(self) -> None:
         if not self.project_service.is_open:
-            self.explorer_dock.set_records([])
+            self.explorer_dock.set_data([], [])
             return
         records = self.project_service.list_records()
+        folders = self.project_service.list_folders()
         counts = {r.id: len(self.project_service.list_features(r.id)) for r in records}
-        self.explorer_dock.set_records(records, counts)
+        self.explorer_dock.set_data(records, folders, counts)
 
     def _refresh_current_record_views(self) -> None:
         features = (
@@ -655,6 +664,54 @@ class MainWindow(QMainWindow):
             self._refresh_current_record_views()
             self._select_default_tab_for_current_record()
         self._log(f"Set {record.display_id} topology to {topology_value}")
+
+    def _on_delete_record_requested(self, record_id: str) -> None:
+        if not self._guard_project_open():
+            return
+        record = self.project_service.get_record(record_id)
+        display_id = record.display_id if record is not None else record_id
+        self.project_service.delete_record(record_id)
+        if self._current_record is not None and self._current_record.id == record_id:
+            self._current_record = None
+            self._current_feature = None
+            self._refresh_current_record_views()
+        self._refresh_project_explorer()
+        self._update_action_states()
+        self._log(f"Deleted record: {display_id}")
+
+    def _on_move_record_to_folder_requested(self, record_id: str, folder_id: str) -> None:
+        if not self._guard_project_open():
+            return
+        self.project_service.move_record_to_folder(record_id, folder_id or None)
+        self._refresh_project_explorer()
+
+    def _on_create_folder_requested(self, name: str, parent_folder_id: str) -> None:
+        if not self._guard_project_open():
+            return
+        self.project_service.create_folder(name, parent_folder_id or None)
+        self._refresh_project_explorer()
+
+    def _on_rename_folder_requested(self, folder_id: str, new_name: str) -> None:
+        if not self._guard_project_open():
+            return
+        self.project_service.rename_folder(folder_id, new_name)
+        self._refresh_project_explorer()
+
+    def _on_delete_folder_requested(self, folder_id: str) -> None:
+        if not self._guard_project_open():
+            return
+        self.project_service.delete_folder(folder_id)
+        self._refresh_project_explorer()
+
+    def _on_move_folder_requested(self, folder_id: str, new_parent_folder_id: str) -> None:
+        if not self._guard_project_open():
+            return
+        try:
+            self.project_service.move_folder(folder_id, new_parent_folder_id or None)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Move to Folder", str(exc))
+            return
+        self._refresh_project_explorer()
 
     # -- Record / feature selection sync --------------------------------------
 

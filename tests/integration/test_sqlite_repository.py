@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from genome_workbench.domain.locations import LocationOperator, LocationPart
 from genome_workbench.domain.models import (
     Feature,
+    Folder,
     MoleculeType,
     Project,
     Provenance,
@@ -13,6 +15,7 @@ from genome_workbench.domain.models import (
     Topology,
 )
 from genome_workbench.domain.qualifiers import QualifierSet
+from genome_workbench.infrastructure.persistence.schema import _SCHEMA_V1, initialize_schema
 from genome_workbench.infrastructure.persistence.sqlite_repository import (
     ProjectRepository,
     ProjectRepositoryError,
@@ -127,6 +130,94 @@ def test_provenance_round_trip_and_integrity(project_path: Path):
     assert fetched.identity == pytest.approx(98.5)
     assert repo.integrity_check()
     repo.close()
+
+
+def test_folder_round_trip_and_nesting(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    parent = Folder(name="Isolates")
+    repo.save_folder(parent)
+    child = Folder(name="2026 batch", parent_folder_id=parent.id)
+    repo.save_folder(child)
+    repo.close()
+
+    reopened = ProjectRepository.open_existing(project_path)
+    fetched_parent = reopened.get_folder(parent.id)
+    fetched_child = reopened.get_folder(child.id)
+    assert fetched_parent is not None
+    assert fetched_parent.parent_folder_id is None
+    assert fetched_child is not None
+    assert fetched_child.parent_folder_id == parent.id
+    assert {f.id for f in reopened.list_folders()} == {parent.id, child.id}
+    reopened.close()
+
+
+def test_record_folder_id_round_trip(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    folder = Folder(name="Isolates")
+    repo.save_folder(folder)
+    record = SequenceRecord(
+        sequence="ACGT" * 100,
+        checksum_sha256="x",
+        molecule_type=MoleculeType.DNA,
+        folder_id=folder.id,
+    )
+    repo.save_record(record)
+    repo.close()
+
+    reopened = ProjectRepository.open_existing(project_path)
+    fetched = reopened.get_record(record.id)
+    assert fetched is not None
+    assert fetched.folder_id == folder.id
+    reopened.close()
+
+    # unfoldered records round-trip a None folder_id, not the string "None"
+    repo2 = ProjectRepository.open_existing(project_path)
+    other = SequenceRecord(sequence="AAAA", checksum_sha256="y", molecule_type=MoleculeType.DNA)
+    repo2.save_record(other)
+    repo2.close()
+    repo3 = ProjectRepository.open_existing(project_path)
+    assert repo3.get_record(other.id).folder_id is None
+    repo3.close()
+
+
+def test_delete_folder_does_not_cascade_to_folder_table_row_only(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    folder = Folder(name="Isolates")
+    repo.save_folder(folder)
+    repo.delete_folder(folder.id)
+    assert repo.get_folder(folder.id) is None
+    repo.close()
+
+
+def test_v1_project_auto_migrates_to_v2_with_folder_support(project_path: Path):
+    # Simulate a project file created before folders existed (schema v1 only)
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(project_path))
+    conn.executescript(_SCHEMA_V1)
+    conn.execute("PRAGMA user_version = 1")
+    conn.execute(
+        "INSERT INTO project (id, name, schema_version, created_at, modified_at, app_version) "
+        "VALUES ('p1', 'Old Project', 1, 'now', 'now', '0.0.9')"
+    )
+    conn.commit()
+    conn.close()
+
+    repo = ProjectRepository.open_existing(project_path)
+    # the migration must not have lost the pre-existing project row
+    assert repo.get_project().name == "Old Project"
+    # and folder support must now work on this upgraded file
+    folder = Folder(name="New folder on upgraded project")
+    repo.save_folder(folder)
+    assert repo.get_folder(folder.id) is not None
+    repo.close()
+
+
+def test_initialize_schema_is_idempotent(project_path: Path):
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(project_path))
+    initialize_schema(conn)
+    initialize_schema(conn)  # must not raise or re-run migrations
+    conn.close()
 
 
 def test_feature_rejects_unknown_provenance(project_path: Path):

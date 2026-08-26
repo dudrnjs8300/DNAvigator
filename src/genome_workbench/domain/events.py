@@ -12,12 +12,16 @@ class EventType:
     FEATURE_CREATE = "feature_create"
     FEATURE_UPDATE = "feature_update"
     FEATURE_DELETE = "feature_delete"
+    RECORD_DELETE = "record_delete"
     SEQUENCE_OPERATION = "sequence_operation"
     BLAST_DATABASE_CREATE = "blast_database_create"
     BLAST_RUN = "blast_run"
     BLAST_ANNOTATION_APPLY = "blast_annotation_apply"
     PROJECT_MIGRATION = "project_migration"
     EXPORT = "export"
+    FOLDER_CREATE = "folder_create"
+    FOLDER_UPDATE = "folder_update"
+    FOLDER_DELETE = "folder_delete"
 
 
 @dataclass(slots=True)

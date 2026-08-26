@@ -62,6 +62,23 @@ class Provenance:
 
 
 @dataclass(slots=True)
+class Folder:
+    """A purely organizational grouping in the Project Explorer tree.
+
+    Deleting a folder never deletes the records/subfolders inside it --
+    callers move the contents up to the parent first (see
+    ProjectService.delete_folder) so a folder is safe to remove without any
+    risk of losing sequence data.
+    """
+
+    id: str = field(default_factory=new_id)
+    name: str = "New Folder"
+    parent_folder_id: str | None = None
+    sort_order: int = 0
+    created_at: str = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
 class SequenceRecord:
     id: str = field(default_factory=new_id)
     display_id: str = ""
@@ -75,6 +92,7 @@ class SequenceRecord:
     source_format: str = ""
     source_record_index: int = 0
     revision: int = 0
+    folder_id: str | None = None
 
     @property
     def length(self) -> int:

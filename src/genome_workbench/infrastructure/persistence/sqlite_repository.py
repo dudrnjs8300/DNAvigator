@@ -12,6 +12,7 @@ from genome_workbench.domain.events import AuditEvent
 from genome_workbench.domain.locations import LocationOperator, LocationPart
 from genome_workbench.domain.models import (
     Feature,
+    Folder,
     MoleculeType,
     Project,
     Provenance,
@@ -111,8 +112,9 @@ class ProjectRepository:
         self._conn.execute(
             """INSERT INTO sequence_record
                (id, display_id, name, description, molecule_type, topology, sequence,
-                checksum_sha256, annotations_json, source_format, source_record_index, revision)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                checksum_sha256, annotations_json, source_format, source_record_index, revision,
+                folder_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(id) DO UPDATE SET
                  display_id=excluded.display_id, name=excluded.name,
                  description=excluded.description, molecule_type=excluded.molecule_type,
@@ -121,7 +123,8 @@ class ProjectRepository:
                  annotations_json=excluded.annotations_json,
                  source_format=excluded.source_format,
                  source_record_index=excluded.source_record_index,
-                 revision=excluded.revision""",
+                 revision=excluded.revision,
+                 folder_id=excluded.folder_id""",
             (
                 record.id,
                 record.display_id,
@@ -135,6 +138,7 @@ class ProjectRepository:
                 record.source_format,
                 record.source_record_index,
                 record.revision,
+                record.folder_id,
             ),
         )
         self._conn.commit()
@@ -170,6 +174,42 @@ class ProjectRepository:
             source_format=row["source_format"],
             source_record_index=row["source_record_index"],
             revision=row["revision"],
+            folder_id=row["folder_id"],
+        )
+
+    # -- Folder ----------------------------------------------------------------
+
+    def save_folder(self, folder: Folder) -> None:
+        self._conn.execute(
+            """INSERT INTO folder (id, name, parent_folder_id, sort_order, created_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 name=excluded.name, parent_folder_id=excluded.parent_folder_id,
+                 sort_order=excluded.sort_order""",
+            (folder.id, folder.name, folder.parent_folder_id, folder.sort_order, folder.created_at),
+        )
+        self._conn.commit()
+
+    def get_folder(self, folder_id: str) -> Folder | None:
+        row = self._conn.execute("SELECT * FROM folder WHERE id = ?", (folder_id,)).fetchone()
+        return self._row_to_folder(row) if row else None
+
+    def list_folders(self) -> list[Folder]:
+        rows = self._conn.execute("SELECT * FROM folder ORDER BY sort_order, name").fetchall()
+        return [self._row_to_folder(row) for row in rows]
+
+    def delete_folder(self, folder_id: str) -> None:
+        self._conn.execute("DELETE FROM folder WHERE id = ?", (folder_id,))
+        self._conn.commit()
+
+    @staticmethod
+    def _row_to_folder(row: sqlite3.Row) -> Folder:
+        return Folder(
+            id=row["id"],
+            name=row["name"],
+            parent_folder_id=row["parent_folder_id"],
+            sort_order=row["sort_order"],
+            created_at=row["created_at"],
         )
 
     # -- Provenance ----------------------------------------------------------

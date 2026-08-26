@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 _SCHEMA_V1 = """
 CREATE TABLE project (
@@ -107,8 +107,23 @@ CREATE TABLE audit_event (
 CREATE INDEX idx_audit_event_created_at ON audit_event(created_at);
 """
 
+_SCHEMA_V2 = """
+CREATE TABLE folder (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    parent_folder_id TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_folder_parent ON folder(parent_folder_id);
+
+ALTER TABLE sequence_record ADD COLUMN folder_id TEXT;
+CREATE INDEX idx_sequence_record_folder_id ON sequence_record(folder_id);
+"""
+
 _MIGRATIONS: dict[int, str] = {
     1: _SCHEMA_V1,
+    2: _SCHEMA_V2,
 }
 
 

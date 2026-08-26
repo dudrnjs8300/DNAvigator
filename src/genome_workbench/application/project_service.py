@@ -6,7 +6,14 @@ from pathlib import Path
 
 from genome_workbench.application.commands import UndoStack
 from genome_workbench.domain.events import AuditEvent, EventType
-from genome_workbench.domain.models import Feature, Project, SequenceRecord, Topology, utc_now
+from genome_workbench.domain.models import (
+    Feature,
+    Folder,
+    Project,
+    SequenceRecord,
+    Topology,
+    utc_now,
+)
 from genome_workbench.infrastructure.filesystem import project_lock
 from genome_workbench.infrastructure.persistence.sqlite_repository import ProjectRepository
 from genome_workbench.version import APP_VERSION
@@ -100,6 +107,20 @@ class ProjectService:
     def list_features(self, record_id: str) -> list[Feature]:
         return self._require_repo().list_features(record_id)
 
+    def delete_record(self, record_id: str) -> None:
+        repo = self.require_writable()
+        record = repo.get_record(record_id)
+        if record is None:
+            raise NoOpenProjectError(f"record {record_id} not found")
+        feature_count = len(repo.list_features(record_id))
+        repo.delete_record(record_id)
+        self.log_audit(
+            EventType.RECORD_DELETE,
+            record_id,
+            f"Deleted record '{record.display_id}' ({feature_count} feature(s) removed with it)",
+        )
+        self.touch()
+
     def set_record_topology(self, record_id: str, topology: Topology) -> SequenceRecord:
         repo = self.require_writable()
         record = repo.get_record(record_id)
@@ -110,6 +131,88 @@ class ProjectService:
         self.log_audit(EventType.FEATURE_UPDATE, record_id, f"Set topology to {topology.value}")
         self.touch()
         return record
+
+    # -- Folders ---------------------------------------------------------------
+
+    def list_folders(self) -> list[Folder]:
+        return self._require_repo().list_folders()
+
+    def create_folder(self, name: str, parent_folder_id: str | None = None) -> Folder:
+        repo = self.require_writable()
+        folder = Folder(name=name, parent_folder_id=parent_folder_id)
+        repo.save_folder(folder)
+        self.log_audit(EventType.FOLDER_CREATE, folder.id, f"Created folder '{name}'")
+        self.touch()
+        return folder
+
+    def rename_folder(self, folder_id: str, new_name: str) -> Folder:
+        repo = self.require_writable()
+        folder = repo.get_folder(folder_id)
+        if folder is None:
+            raise NoOpenProjectError(f"folder {folder_id} not found")
+        old_name = folder.name
+        folder.name = new_name
+        repo.save_folder(folder)
+        self.log_audit(
+            EventType.FOLDER_UPDATE, folder_id, f"Renamed folder '{old_name}' to '{new_name}'"
+        )
+        self.touch()
+        return folder
+
+    def delete_folder(self, folder_id: str) -> None:
+        """Removes the folder but never the records/subfolders inside it --
+        they move up to the deleted folder's parent (or to the root)."""
+        repo = self.require_writable()
+        folder = repo.get_folder(folder_id)
+        if folder is None:
+            raise NoOpenProjectError(f"folder {folder_id} not found")
+        new_parent = folder.parent_folder_id
+        for child_folder in repo.list_folders():
+            if child_folder.parent_folder_id == folder_id:
+                child_folder.parent_folder_id = new_parent
+                repo.save_folder(child_folder)
+        for record in repo.list_records():
+            if record.folder_id == folder_id:
+                record.folder_id = new_parent
+                repo.save_record(record)
+        repo.delete_folder(folder_id)
+        self.log_audit(EventType.FOLDER_DELETE, folder_id, f"Deleted folder '{folder.name}'")
+        self.touch()
+
+    def move_record_to_folder(self, record_id: str, folder_id: str | None) -> SequenceRecord:
+        repo = self.require_writable()
+        record = repo.get_record(record_id)
+        if record is None:
+            raise NoOpenProjectError(f"record {record_id} not found")
+        record.folder_id = folder_id
+        repo.save_record(record)
+        self.log_audit(EventType.FOLDER_UPDATE, record_id, f"Moved record '{record.display_id}'")
+        self.touch()
+        return record
+
+    def move_folder(self, folder_id: str, new_parent_folder_id: str | None) -> Folder:
+        repo = self.require_writable()
+        folder = repo.get_folder(folder_id)
+        if folder is None:
+            raise NoOpenProjectError(f"folder {folder_id} not found")
+        if new_parent_folder_id == folder_id:
+            raise ValueError("a folder cannot be moved into itself")
+        by_id = {f.id: f for f in repo.list_folders()}
+        cursor = new_parent_folder_id
+        seen: set[str] = set()
+        while cursor is not None:
+            if cursor == folder_id:
+                raise ValueError("a folder cannot be moved into one of its own subfolders")
+            if cursor in seen:
+                break
+            seen.add(cursor)
+            parent = by_id.get(cursor)
+            cursor = parent.parent_folder_id if parent is not None else None
+        folder.parent_folder_id = new_parent_folder_id
+        repo.save_folder(folder)
+        self.log_audit(EventType.FOLDER_UPDATE, folder_id, f"Moved folder '{folder.name}'")
+        self.touch()
+        return folder
 
     def touch(self) -> None:
         self._require_repo().touch_project(utc_now())
