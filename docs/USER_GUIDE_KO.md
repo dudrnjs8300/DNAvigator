@@ -84,7 +84,8 @@ Circular Map에서도 마우스만으로 조작할 수 있다:
 1. Genome Map, Circular Map, Feature Table 중 어디서든 feature를 클릭한다.
 2. 오른쪽 **Inspector**에 type, strand, 좌표, 공통 qualifier(gene/locus_tag/product/note/db_xref/inference), 추출된 nucleotide/translation, validation 경고, provenance가 표시된다.
 3. 값을 직접 수정한다. 공통 6개 필드 외의 qualifier는 **All other qualifiers** 표에서 **Add Qualifier / Remove Selected**로 자유롭게 추가·삭제한다(multi-value 가능).
-4. **Apply**를 누르면 저장되고, **Revert**를 누르면 마지막 저장 상태로 되돌린다.
+4. **여러 구간(join/compound) feature**를 열면 **Multiple segments (join)** 체크박스가 자동으로 켜지고 구간 목록이 표에 나타난다. 표에서 좌표를 직접 수정하거나 **Add Segment/Remove Selected**로 구간을 추가/삭제할 수 있다 — 어떤 순서로 입력해도 strand에 맞게 자동 정렬된다. 체크박스를 끄면 단일 구간으로 축소된다(의도적으로 그렇게 하려는 경우에만 사용).
+5. **Apply**를 누르면 저장되고, **Revert**를 누르면 마지막 저장 상태로 되돌린다.
 
 ## 8. 선택 영역으로 할 수 있는 것 (우클릭 메뉴)
 

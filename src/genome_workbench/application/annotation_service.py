@@ -20,8 +20,8 @@ from genome_workbench.domain.events import EventType
 from genome_workbench.domain.locations import (
     LocationOperator,
     LocationPart,
+    build_ordered_parts_from_display_segments,
     extract_sequence,
-    order_parts_for_strand,
 )
 from genome_workbench.domain.models import Feature, Provenance, SequenceRecord, utc_now
 from genome_workbench.domain.qualifiers import QualifierSet
@@ -162,16 +162,7 @@ class AnnotationService:
     def _build_ordered_parts(
         segments_1based: list[tuple[int, int]], strand: int | None
     ) -> list[LocationPart]:
-        if not segments_1based:
-            raise ValueError("a compound feature needs at least one segment")
-        ascending = sorted(segments_1based, key=lambda pair: pair[0])
-        plain_parts = []
-        for start, end in ascending:
-            interval = Interval0.from_display(start, end)
-            plain_parts.append(
-                LocationPart(start0=interval.start0, end0=interval.end0, order_index=0)
-            )
-        return order_parts_for_strand(plain_parts, strand)
+        return build_ordered_parts_from_display_segments(segments_1based, strand)
 
     def update_feature(self, before: Feature, after: Feature) -> None:
         after.modified_at = utc_now()

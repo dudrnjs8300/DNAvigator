@@ -1,7 +1,13 @@
 """Right dock: record summary or an editable feature form.
 
 Editing happens in place here — no separate modal dialog is needed to change
-a feature's coordinates, strand, type, or common qualifiers.
+a feature's coordinates, strand, type, or common qualifiers. Compound (join)
+features are edited via the same segments-table pattern as
+dialogs/add_feature_dialog.py, and the "Multiple segments (join)" checkbox
+is pre-checked from the feature's actual part count on load -- this matters
+because before this existed, opening a compound feature here and clicking
+Apply silently collapsed it to a single bounding-box segment (the form only
+ever built a 1-part SIMPLE feature, regardless of what was selected).
 """
 
 from __future__ import annotations
@@ -9,6 +15,7 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDockWidget,
     QFormLayout,
@@ -26,7 +33,12 @@ from PySide6.QtWidgets import (
 )
 
 from genome_workbench.domain.coordinates import display_from_internal
-from genome_workbench.domain.locations import LocationOperator, LocationPart, extract_sequence
+from genome_workbench.domain.locations import (
+    LocationOperator,
+    LocationPart,
+    build_ordered_parts_from_display_segments,
+    extract_sequence,
+)
 from genome_workbench.domain.models import Feature, SequenceRecord
 from genome_workbench.domain.qualifiers import QualifierSet
 from genome_workbench.domain.sequence_ops import translate
@@ -65,6 +77,38 @@ class InspectorDock(QDockWidget):
         self._end_spin = QSpinBox()
         self._end_spin.setRange(1, 1_000_000_000)
 
+        self._join_checkbox = QCheckBox("Multiple segments (join)")
+        self._join_checkbox.toggled.connect(self._on_join_toggled)
+
+        self._segments_table = QTableWidget(0, 2)
+        self._segments_table.setHorizontalHeaderLabels(["Start (1-based)", "End (1-based)"])
+        self._segments_table.setMaximumHeight(120)
+        self._segments_table.itemChanged.connect(self._refresh_preview)
+        add_segment_button = QPushButton("Add Segment")
+        remove_segment_button = QPushButton("Remove Selected")
+        add_segment_button.clicked.connect(self._on_add_segment)
+        remove_segment_button.clicked.connect(self._on_remove_segment)
+        segment_buttons = QHBoxLayout()
+        segment_buttons.addWidget(add_segment_button)
+        segment_buttons.addWidget(remove_segment_button)
+        segment_buttons.addStretch()
+
+        self._simple_location_widget = QWidget()
+        simple_form = QFormLayout(self._simple_location_widget)
+        simple_form.setContentsMargins(0, 0, 0, 0)
+        simple_form.addRow("Start (1-based inclusive)", self._start_spin)
+        simple_form.addRow("End (1-based inclusive)", self._end_spin)
+
+        self._compound_location_widget = QWidget()
+        compound_layout = QVBoxLayout(self._compound_location_widget)
+        compound_layout.setContentsMargins(0, 0, 0, 0)
+        compound_layout.addWidget(self._segments_table)
+        compound_layout.addLayout(segment_buttons)
+
+        self._location_stack = QStackedWidget()
+        self._location_stack.addWidget(self._simple_location_widget)
+        self._location_stack.addWidget(self._compound_location_widget)
+
         self._qualifier_edits: dict[str, QLineEdit] = {
             key: QLineEdit() for key in _COMMON_QUALIFIER_KEYS
         }
@@ -97,8 +141,8 @@ class InspectorDock(QDockWidget):
         form = QFormLayout()
         form.addRow("Type", self._type_edit)
         form.addRow("Strand", self._strand_combo)
-        form.addRow("Start (1-based inclusive)", self._start_spin)
-        form.addRow("End (1-based inclusive)", self._end_spin)
+        form.addRow(self._join_checkbox)
+        form.addRow(self._location_stack)
         for key, edit in self._qualifier_edits.items():
             form.addRow(f"/{key}", edit)
         form.addRow(QLabel("All other qualifiers:"))
@@ -144,6 +188,43 @@ class InspectorDock(QDockWidget):
             self._advanced_qualifier_table.removeRow(row)
         self._refresh_preview()
 
+    def _on_join_toggled(self, checked: bool) -> None:
+        self._location_stack.setCurrentIndex(1 if checked else 0)
+        self._refresh_preview()
+
+    def _add_segment_row(self, start_1based: int, end_1based: int) -> None:
+        row = self._segments_table.rowCount()
+        self._segments_table.insertRow(row)
+        self._segments_table.setItem(row, 0, QTableWidgetItem(str(start_1based)))
+        self._segments_table.setItem(row, 1, QTableWidgetItem(str(end_1based)))
+
+    def _on_add_segment(self) -> None:
+        default_end = min(self._record.length, 1) if self._record is not None else 1
+        self._add_segment_row(1, default_end)
+        self._refresh_preview()
+
+    def _on_remove_segment(self) -> None:
+        rows = sorted({index.row() for index in self._segments_table.selectedIndexes()})
+        for row in reversed(rows):
+            if self._segments_table.rowCount() > 1:
+                self._segments_table.removeRow(row)
+        self._refresh_preview()
+
+    def _current_segments(self) -> list[tuple[int, int]] | None:
+        segments: list[tuple[int, int]] = []
+        for row in range(self._segments_table.rowCount()):
+            start_item = self._segments_table.item(row, 0)
+            end_item = self._segments_table.item(row, 1)
+            try:
+                start = int(start_item.text()) if start_item else 0
+                end = int(end_item.text()) if end_item else 0
+            except ValueError:
+                return None
+            if start < 1 or end < start:
+                return None
+            segments.append((start, end))
+        return segments or None
+
     def show_record(self, record: SequenceRecord) -> None:
         self._record = record
         self._feature = None
@@ -172,6 +253,10 @@ class InspectorDock(QDockWidget):
         self._stack.setCurrentWidget(self._empty_label)
 
     def _populate_form(self, feature: Feature) -> None:
+        # Start/end always seed from the feature's bounding span (Feature.start0/
+        # end0 already reduce multi-part locations to min-start/max-end), so
+        # they're sensible even if the user unchecks "join" for a compound
+        # feature and collapses it to a single segment.
         start_disp, end_disp = display_from_internal(feature.start0, feature.end0)
         self._type_edit.setText(feature.type)
         strand_map: dict[int | None, str] = {1: "+", -1: "-"}
@@ -182,6 +267,23 @@ class InspectorDock(QDockWidget):
         self._end_spin.setValue(end_disp)
         self._start_spin.blockSignals(False)
         self._end_spin.blockSignals(False)
+
+        is_join = len(feature.parts) > 1
+        self._join_checkbox.blockSignals(True)
+        self._join_checkbox.setChecked(is_join)
+        self._join_checkbox.blockSignals(False)
+        self._location_stack.setCurrentIndex(1 if is_join else 0)
+
+        self._segments_table.blockSignals(True)
+        self._segments_table.setRowCount(0)
+        # ascending genomic order for readability, regardless of strand or
+        # stored order_index -- matches AddFeatureDialog's convention where
+        # segment entry order never matters (Apply re-derives order_index).
+        for part in sorted(feature.parts, key=lambda p: p.start0):
+            part_start_disp, part_end_disp = display_from_internal(part.start0, part.end0)
+            self._add_segment_row(part_start_disp, part_end_disp)
+        self._segments_table.blockSignals(False)
+
         for key, edit in self._qualifier_edits.items():
             edit.setText(feature.qualifiers.get_first(key) or "")
 
@@ -204,31 +306,50 @@ class InspectorDock(QDockWidget):
         text = self._strand_combo.currentText()
         return {"+": 1, "-": -1}.get(text)
 
+    def _current_parts_and_operator(self) -> tuple[list[LocationPart], LocationOperator] | None:
+        strand = self._current_strand_value()
+        if self._join_checkbox.isChecked():
+            segments = self._current_segments()
+            if not segments:
+                return None
+            try:
+                parts = build_ordered_parts_from_display_segments(segments, strand)
+            except ValueError:
+                return None
+            return parts, LocationOperator.JOIN
+        start0, end0 = self._start_spin.value() - 1, self._end_spin.value()
+        if end0 <= start0:
+            return None
+        return [LocationPart(start0=start0, end0=end0, order_index=0)], LocationOperator.SIMPLE
+
     def _refresh_preview(self) -> None:
         if self._feature is None or self._record is None:
             return
+        candidate = self._build_candidate_feature()
+        if candidate is None:
+            self._nucleotide_preview.setPlainText("")
+            self._translation_preview.setPlainText("")
+            self._validation_label.setText(
+                "Enter valid segment(s) -- end must be after start in every segment."
+            )
+            return
+
+        strand = self._current_strand_value()
         try:
-            start0, end0 = self._start_spin.value() - 1, self._end_spin.value()
-            if end0 <= start0:
-                self._validation_label.setText("End must be after start.")
-                return
-            part = LocationPart(start0=start0, end0=end0, order_index=0)
-            strand = self._current_strand_value()
             nucleotide = extract_sequence(
-                self._record.sequence, [part], strand, self._record.length
+                self._record.sequence, candidate.parts, strand, self._record.length
             )
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self._validation_label.setText(f"Error: {exc}")
             return
 
         self._nucleotide_preview.setPlainText(nucleotide[:2000])
-        if self._type_edit.text() == "CDS":
+        if candidate.type == "CDS":
             protein = translate(nucleotide).protein
             self._translation_preview.setPlainText(protein[:2000])
         else:
             self._translation_preview.setPlainText("")
 
-        candidate = self._build_candidate_feature()
         issues = validate_feature(candidate, self._record)
         if not issues:
             self._validation_label.setText("No issues.")
@@ -237,9 +358,13 @@ class InspectorDock(QDockWidget):
                 "\n".join(f"[{issue.severity.upper()}] {issue.message}" for issue in issues)
             )
 
-    def _build_candidate_feature(self) -> Feature:
+    def _build_candidate_feature(self) -> Feature | None:
         assert self._feature is not None
-        start0, end0 = self._start_spin.value() - 1, self._end_spin.value()
+        result = self._current_parts_and_operator()
+        if result is None:
+            return None
+        parts, operator = result
+
         qualifiers = QualifierSet()
         for key, edit in self._qualifier_edits.items():
             if edit.text():
@@ -256,8 +381,8 @@ class InspectorDock(QDockWidget):
             record_id=self._feature.record_id,
             type=self._type_edit.text() or self._feature.type,
             strand=self._current_strand_value(),
-            location_operator=LocationOperator.SIMPLE,
-            parts=[LocationPart(start0=start0, end0=end0, order_index=0)],
+            location_operator=operator,
+            parts=parts,
             qualifiers=qualifiers,
             display_label=self._feature.display_label,
             parent_ids=list(self._feature.parent_ids),
@@ -274,6 +399,11 @@ class InspectorDock(QDockWidget):
         if self._feature is None:
             return
         after = self._build_candidate_feature()
+        if after is None:
+            self._validation_label.setText(
+                "Cannot apply -- fix the segment(s) first (end must be after start)."
+            )
+            return
         self.featureUpdateRequested.emit(self._feature, after)
 
     def _on_revert(self) -> None:

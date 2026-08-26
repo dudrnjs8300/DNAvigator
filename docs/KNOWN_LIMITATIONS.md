@@ -15,7 +15,7 @@
 ## Annotation
 
 - **Fuzzy location을 마우스로 만드는 UI가 없음** (Phase 4 나머지 범위). Compound(join) location은 `AddFeatureDialog`의 "Multiple segments (join)" 체크박스로 생성 가능해졌다(세그먼트를 임의 순서로 입력해도 strand에 따른 생물학적 순서(D-002)로 자동 정렬됨). Fuzzy(`<`/`>`) boundary 입력은 여전히 없음 — domain/adapter는 완전히 지원하고 import 시 보존한다.
-- **기존 compound feature의 part 목록을 Inspector에서 재편집할 수 없음.** Inspector는 여전히 단일 구간(simple) 좌표 편집만 지원한다. Feature 경계 drag-resize도 단일 part feature에만 동작하며, compound feature는 크기 조정 시 명확한 오류 메시지를 표시하고 거부한다(자동 처리 대신 안전하게 실패).
+- **기존 compound feature의 part 목록을 Inspector에서 재편집할 수 있게 됨.** `AddFeatureDialog`와 동일한 "Multiple segments (join)" 체크박스 + segments 표 패턴을 Inspector에도 추가했다 — feature를 열면 실제 part 개수에 따라 체크박스가 자동으로 켜지고 segments 표가 채워진다. **이 작업 중 실제 데이터 손실 버그를 발견해 고쳤다**: 이전에는 compound feature를 열고 아무것도 바꾸지 않은 채 Apply만 눌러도 항상 단일 구간(bounding box) simple feature로 조용히 뭉개져 저장되었다(폼이 언제나 1-part SIMPLE feature만 만들었기 때문). 이제 Apply는 실제 part 구조를 그대로 보존하며, 세그먼트 추가/삭제/좌표 수정도 가능하고, 체크박스를 명시적으로 끄면(사용자의 의도적 조작) simple로 축소하는 것도 가능하다. 세그먼트를 어떤 순서로 편집해도 D-002 규칙(`build_ordered_parts_from_display_segments`, `AddFeatureDialog`와 동일 로직 공유)에 따라 strand 기반 생물학적 순서로 자동 정렬된다. Feature 경계 drag-resize는 여전히 단일 part feature에만 동작한다(compound feature는 명확한 오류 메시지를 내며 거부 — 이제 Inspector로 재편집하면 되므로 우선순위가 낮음). `tests/ui/test_inspector_compound_feature.py` 8건으로 검증(Apply-without-changes 회귀 테스트 포함).
 - **Batch qualifier 연산, annotation template 없음** (Phase 4 나머지 범위). Qualifier 편집은 공통 6개 필드(quick access) + "All other qualifiers" 자유 key/value 테이블(추가/삭제/multi-value)로 개별 feature 단위에서는 완전하지만, 여러 feature를 한 번에 편집하는 기능은 없다.
 - **Batch BLAST(여러 feature 동시 검색) 미지원** — 한 번에 하나의 selection/query만 처리한다 (Phase 6 나머지 범위).
 
