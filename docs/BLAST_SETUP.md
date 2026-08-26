@@ -2,7 +2,7 @@
 
 GenomeWorkbench는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 조건 미검토, `docs/LICENSING.md` 참고). 사용자가 직접 설치하거나 이미 설치된 것을 등록해야 한다.
 
-> **이 문서의 검증 상태**: 이 개발 환경에는 실제 NCBI BLAST+가 설치되어 있지 않아, 아래 절차 자체(공식 배포판 다운로드/설치)는 직접 실행해보지 못했다. GenomeWorkbench의 BLAST 파이프라인(command 구성, subprocess 실행, 결과 파싱, 좌표 매핑)은 대역(mock) 실행파일로 전체 경로를 검증했다 — 실제 파일 이름(`makeblastdb.exe`, `blastn.exe` 등)과 `-version`/`-outfmt 6 ...` 인터페이스를 그대로 사용하도록 작성되어 있으므로 동작할 것으로 예상하지만, 실제 바이너리로 최종 확인 전까지는 확정된 것으로 보지 말 것.
+> **이 문서의 검증 상태**: 1절의 절차(공식 NCBI FTP에서 `ncbi-blast-2.17.0+-win64.exe` 다운로드 → MD5 확인 → silent 설치 `/S`)를 이 개발 머신에서 실제로 수행했고, GenomeWorkbench의 BLAST 파이프라인(설치 자동 탐지, 실제 `makeblastdb`로 nucleotide/protein database 생성, 실제 `blastn`/`blastp` 실행, 결과 파싱, 좌표 매핑, annotation 적용)을 전부 실제 바이너리로 검증했다(`tests/integration/test_blast_real_installation.py`). blastx/tblastn(번역 검색)은 여전히 mock 실행파일로만 검증되었다.
 
 ## 1. 공식 BLAST+ 설치
 

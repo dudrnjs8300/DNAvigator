@@ -2,17 +2,17 @@
 
 작성일: 2026-08-26
 버전: 0.1.0
-검증 환경: 개발 머신(Windows 10.0.19045 x64, Python 3.14.6), 자동화 테스트 스위트, 실제 PyInstaller onedir 빌드
+검증 환경: 개발 머신(Windows 10.0.19045 x64, Python 3.14.6), 자동화 테스트 스위트, 실제 PyInstaller onedir 빌드, 실제 NCBI BLAST+ 2.17.0(win64) 설치
 검증하지 못한 것은 "검증하지 못함"이라고 명시한다 — 통과로 보고하지 않는다.
 
 ## 요약
 
-- 자동화 테스트: **183 passed**, 0 failed (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`)
+- 자동화 테스트: **187 passed**, 0 failed (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`; 실제 BLAST+ 테스트 2건 포함, BLAST+ 미설치 환경에서는 자동 skip)
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench`: 모두 clean
 - Windows 실행파일(onedir) 빌드 성공, `--self-test`/`--smoke-test` exit code 0
 - Portable ZIP: 별도 임시 경로 및 한글/공백 경로로 압축 해제 후 `--self-test` exit code 0 확인
 - Installer: Inno Setup 6로 컴파일 성공, silent 설치(관리자 권한 불필요) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 개발 머신에서 검증. **완전히 별도의 clean Windows 사용자 계정/VM에서의 검증은 아직 하지 못함** (AT-10 참고)
-- 실제 NCBI BLAST+ 바이너리: **사용하지 못함** (설치되어 있지 않음) — 대역(mock) 실행파일로 파이프라인 자체는 검증
+- 실제 NCBI BLAST+ 2.17.0(win64) 바이너리: 공식 NCBI FTP에서 설치(MD5 확인)해 blastn/blastp/database 생성/좌표 매핑/annotation 적용까지 실제로 검증(아래 AT-06/AT-07 참고). 대역(mock) 실행파일 기반 테스트도 회귀 검증용으로 계속 유지.
 
 ## AT-01 FASTA manual annotation round-trip
 
@@ -36,11 +36,11 @@
 
 ## AT-06 custom nucleotide BLAST DB
 
-**부분 통과 — 실제 BLAST+ 미사용.** `tests/integration/test_blast_pipeline.py::test_create_database_with_mock_makeblastdb`로 안전하지 않은 ID(`|` 포함) → safe ID 매핑 → manifest 생성 → `blastdbcmd -info` 검증까지의 전체 코드 경로를 대역 실행파일로 확인했다. Command 구성과 subprocess 호출은 실제 `makeblastdb.exe`/`blastdbcmd.exe` 이름과 인터페이스를 그대로 사용하도록 작성되어 있으나, **실제 NCBI BLAST+ 바이너리로 이 시나리오를 재현하지는 못했다.**
+**통과 — 실제 BLAST+로 검증됨.** `tests/integration/test_blast_pipeline.py::test_create_database_with_mock_makeblastdb`가 안전하지 않은 ID(`|` 포함) → safe ID 매핑 → manifest 생성 → `blastdbcmd -info` 검증까지의 코드 경로를 대역 실행파일로 계속 확인한다. 여기에 더해 `tests/integration/test_blast_real_installation.py::test_real_blastn_self_hit_and_apply_as_annotation`이 **실제 NCBI BLAST+ 2.17.0**(공식 NCBI FTP에서 설치, MD5 확인됨)으로 동일한 시나리오를 재현한다: 실제 `makeblastdb`로 `simple_linear.fasta`에서 database 생성 → 실제 `blastn`으로 자기 자신의 300bp 조각 검색(identity/coverage 100%) → genome 좌표로 매핑 → annotation 적용까지 전부 실제 바이너리로 통과.
 
 ## AT-07 protein BLAST annotation
 
-**부분 통과 — blastn 경로만 e2e 검증됨.** `tests/ui/test_genome_visualization_workflow.py::test_blast_run_and_apply_hit_as_annotation_end_to_end`가 선택 영역 BLAST 실행 → hit 선택 → `product`는 제외하고 `note`만 선택해 적용 → 적용 후 origin locus_tag/protein_id가 복사되지 않음(체크박스 기본값이 그렇게 설계됨)까지 검증한다. 다만 이 테스트는 **blastn(nucleotide)** 경로이며, blastp/protein CDS translation 조합으로 직접 실행한 자동 테스트는 없다. `suggest_program()`이 protein-vs-protein일 때 blastp를 올바르게 제안하는 것은 단위 테스트(`test_blast_models.py`)로 확인되었고 이후 파이프라인은 program 무관하게 동일한 코드 경로를 타므로 동작할 개연성은 높지만, protein 케이스 자체의 e2e 자동 테스트는 아직 없다.
+**통과 — blastn UI e2e + blastp 실제 바이너리 검증.** `tests/ui/test_genome_visualization_workflow.py::test_blast_run_and_apply_hit_as_annotation_end_to_end`가 UI 계층에서 선택 영역 BLAST 실행 → hit 선택 → `product`는 제외하고 `note`만 선택해 적용 → 적용 후 origin locus_tag/protein_id가 복사되지 않음(체크박스 기본값이 그렇게 설계됨)까지 검증한다(blastn 경로). 여기에 더해 `tests/integration/test_blast_real_installation.py::test_real_blastp_self_hit`이 **실제 blastp**로 protein database 생성 → protein 검색 → 정확한 top hit(자기 자신)까지 서비스 계층에서 검증한다. 남은 gap: UI 계층(dispatch/dialog)에서 blastp를 직접 구동하는 자동 테스트는 여전히 blastn 경로만 있다 — program 값과 무관하게 동일한 UI 코드 경로를 타므로 위험은 낮다고 판단하나, 완전히 동일한 조합의 UI 자동 테스트는 아니다.
 
 ## AT-08 cancel and failure
 
@@ -58,15 +58,15 @@
 - 설치된 실행파일의 `--self-test`/`--smoke-test` 모두 exit code 0, Start Menu 바로가기(`GenomeWorkbench.lnk`) 생성 확인.
 - `unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`로 silent 제거 — 설치 디렉터리와 바로가기가 깨끗하게 제거됨을 확인(사용자 데이터는 애초에 설치 디렉터리 밖에 있어 영향 없음).
 - (참고) 언어를 2개 이상 등록하면 `/VERYSILENT`만으로는 언어 선택 대화상자가 떠서 자동화 설치가 멈춘다 — `/LANG=`을 함께 지정해야 한다. 대화형(GUI) 설치에서는 해당되지 않는 제약이다.
-- 개발 머신 자체에는 BLAST+가 설치되어 있지 않으므로, "BLAST 미설치 상태에서 self-test가 core 실패로 처리되지 않고 `optional_tool_unavailable`로 분류됨"도 실제로 검증됨.
+- `--self-test`의 `blast_executable` 항목은 실제 탐지를 하지 않는 정적 안내 필드이며 `optional: true`로 표시되어 core 실패를 유발하지 않는다 — 이는 실제 NCBI BLAST+ 설치 여부와 무관하게(이 머신에는 이후 실제로 BLAST+를 설치했다) 동일하게 동작함을 확인.
 - Portable ZIP을 완전히 다른 임시 경로(및 한글/공백 경로)에 압축 해제해 `--self-test`를 확인 — "이 실행파일 자체가 별도 Python 설치 없이 독립 실행됨"도 검증됨.
 
 여전히 남은 것: **완전히 새로운 Windows 사용자 계정 또는 clean VM**에서의 검증(이 개발 머신은 Python/개발 도구가 이미 설치된 환경이라, "이 머신에 아무것도 없어도 동작하는가"를 완벽히 대체하지 못한다), 그리고 BLAST Setup Wizard를 통한 실제 BLAST+ 인식 노출 확인.
 
 ## 결론
 
-P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer도 이 개발 머신에서의 설치/실행/제거까지 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
-- 실제 NCBI BLAST+ 바이너리로의 재검증
+P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer의 설치/실행/제거와 BLAST 파이프라인(blastn/blastp) 모두 실제 바이너리로 이 개발 머신에서 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
 - Job 취소(cancel) UI
 - 완전히 별도의 clean Windows 사용자 계정/VM에서의 installer 설치 검증
-- protein(blastp) BLAST 경로의 전용 e2e 테스트
+- blastp 경로의 UI 계층(dispatch/dialog) 전용 자동 테스트(서비스 계층은 실제 바이너리로 검증됨)
+- blastx/tblastn(번역 검색) frame 좌표 매핑의 실제 바이너리 검증(blastn/blastp만 검증됨)
