@@ -18,7 +18,7 @@ from genome_workbench.application.project_service import ProjectService
 from genome_workbench.domain.coordinates import Interval0
 from genome_workbench.domain.events import EventType
 from genome_workbench.domain.locations import LocationOperator, LocationPart, extract_sequence
-from genome_workbench.domain.models import Feature, SequenceRecord, utc_now
+from genome_workbench.domain.models import Feature, Provenance, SequenceRecord, utc_now
 from genome_workbench.domain.qualifiers import QualifierSet
 from genome_workbench.domain.sequence_ops import TranslationResult, translate
 from genome_workbench.domain.validation import ValidationIssue, validate_feature
@@ -65,9 +65,17 @@ class AnnotationService:
         strand: int | None,
         feature_type: str,
         qualifiers: QualifierSet,
+        provenance: Provenance | None = None,
     ) -> Feature:
         interval = Interval0.from_display(start_1based, end_1based)
         part = LocationPart(start0=interval.start0, end0=interval.end0, order_index=0)
+
+        provenance_id: str | None = None
+        repo = self._project_service.get_repository()
+        if provenance is not None:
+            repo.save_provenance(provenance)
+            provenance_id = provenance.id
+
         feature = Feature(
             record_id=record.id,
             type=feature_type,
@@ -75,14 +83,15 @@ class AnnotationService:
             location_operator=LocationOperator.SIMPLE,
             parts=[part],
             qualifiers=qualifiers,
+            provenance_id=provenance_id,
         )
-        repo = self._project_service.get_repository()
         command = FeatureCreateCommand(repo, feature)
         self._project_service.undo_stack.push(command)
+        source = "BLAST evidence" if provenance is not None else "Manual"
         self._project_service.log_audit(
             EventType.FEATURE_CREATE,
             feature.id,
-            f"Created {feature.type} feature at {start_1based}..{end_1based}",
+            f"Created {feature.type} feature at {start_1based}..{end_1based} ({source})",
         )
         self._project_service.touch()
         return feature

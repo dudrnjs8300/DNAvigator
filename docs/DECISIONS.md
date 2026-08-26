@@ -29,6 +29,25 @@
 - **검증**: 실제 빌드된 `dist/GenomeWorkbench/GenomeWorkbench.exe`에 대해 `--version`, `--self-test`, `--smoke-test`를 모두 실행해 exit code 0과 파일 출력을 직접 확인함(세션 로그 참고). `--self-test`는 Qt platform plugin 로드까지 frozen exe 내부에서 성공적으로 통과했고, `--smoke-test`는 FASTA import → project 저장/재오픈 → feature 생성 → GenBank export → semantic reimport 검증까지 실제 packaged 산출물에서 전부 통과했다.
 - **재검토 조건**: Phase 8에서 실제 대화형 터미널 및 GitHub Actions windows-latest runner에서 `AttachConsole` 경로 자체도 재검증한다.
 
+## D-006: 중앙 화면을 text/table에서 실제 genome visualization으로 재설계
+
+- **배경**: 사용자가 Phase 1 결과물을 검토한 뒤, "초보자가 마우스만으로 genome을 탐색·annotation할 수 있는 Geneious 스타일 workbench"를 원했는데 실제로는 sequence 목록 조회기 수준이라고 지적함. "검토 후 진행하지 말고 작업의뢰서(GenomeWorkbench 원본 스펙)대로 끝까지 진행하라"는 명시적 지시를 받음.
+- **판단**: Phase 순서를 엄격히 지키는 대신, 사용자가 실제로 가치를 느끼는 부분(Phase 3 시각화, Phase 5/6 BLAST)을 Phase 2(GFF3)보다 먼저 구현했다. `ui/views/genome_canvas.py`(선형, LOD 4단계), `circular_genome_canvas.py`(원형), `minimap.py`, 편집 가능한 `InspectorDock`, 실제 BLAST 파이프라인을 새로 만들고 기존 `QPlainTextEdit` 기반 Sequence/Overview 탭은 완전히 폐기했다.
+- **근거**: PROGRESS.md "Phase 3 / BLAST 조기 구현" 절에 상세 체크리스트와 스크린샷 검증 결과를 남김.
+
+## D-007: BLAST database 카탈로그는 project가 아닌 사용자 전역 범위
+
+- **판단**: `BlastService`는 등록된 BLAST database 목록을 project SQLite가 아니라 `%LOCALAPPDATA%/GenomeWorkbench/blast/catalog.json`에 저장한다. 여러 project가 동일한 reference database(예: 표준 AMR gene DB)를 재사용하는 것이 자연스러운 사용 패턴이라고 판단했기 때문이다.
+- **테스트 격리**: 이 전역 상태 때문에 자동화 테스트가 실제 사용자 프로필을 오염시키는 문제를 발견했다(동일 이름의 database가 테스트 실행마다 누적됨). `BlastService.__init__(work_dir=...)`와 `MainWindow.__init__(blast_work_dir=...)`에 주입 지점을 추가해 테스트는 `tmp_path`를 사용하고, 프로덕션 기본값은 기존과 동일한 전역 경로를 유지한다.
+- **evidence 보존과의 관계**: database가 나중에 삭제/카탈로그에서 제거되어도 이미 적용된 annotation의 근거(Provenance: database_id, checksum, subject_id, identity/evalue/bitscore, raw_result_ref)는 project SQLite에 별도로 영속화되어 있으므로 spec 11.10의 "database가 삭제되어도 evidence summary는 project 안에 남아야 한다" 요구사항은 충족된다.
+
+## D-008: QMenu.exec()는 monkeypatch로 가로챌 수 없음 — 메뉴 표시/처리 분리로 대응
+
+- **문제**: `PySide6.QtWidgets.QMenu`의 `exec()`는 Shiboken이 생성한 바인딩 메서드라서 `monkeypatch.setattr(QMenu, "exec", fake)`로 클래스 속성을 덮어써도 실제 인스턴스 호출에는 반영되지 않는다. `menu.exec(pos)`를 호출하면 진짜 모달 이벤트 루프가 열리고, headless(offscreen) 테스트 환경에는 클릭할 사용자가 없으므로 **영원히 멈춘다**. (반면 `QDialog.exec()`는 동일한 monkeypatch 패턴으로 정상적으로 가로채짐 — `AddFeatureDialog`, `CreateBlastDatabaseDialog`, `ApplyBlastHitDialog` 테스트에서 검증됨.)
+- **재현**: 최소 재현 스크립트로 `QMenu.exec = lambda self, *a, **k: self.actions()[0]` 후 `menu.exec(QPoint(0,0))` 호출 시 timeout까지 멈추는 것을 직접 확인함.
+- **판단**: `MainWindow._on_canvas_context_menu`(메뉴 생성 + `exec` 호출)와 `MainWindow._dispatch_selection_action(key, start0, end0)`(실제 동작 처리)를 분리했다. 자동화 테스트는 실제 드래그로 만든 selection에 대해 `_dispatch_selection_action("add_annotation", start0, end0)`를 직접 호출해 검증한다 — 모달 없이 동일한 프로덕션 코드 경로를 그대로 실행한다.
+- **향후 적용**: 다른 QMenu 기반 UI(예: feature table 우클릭 메뉴)를 추가할 때도 이 패턴(표시/처리 분리)을 재사용할 것.
+
 ## D-004: Feature.strand는 단일 값
 
 - 명세 5.2 표는 Feature.strand를 `+1, -1, 0/None` 단일 값으로 정의한다. Biopython의 `CompoundLocation`은 이론상 part마다 다른 strand를 가질 수 있으나(order operator 등 드문 경우), P0 범위에서는 지원하지 않는다.

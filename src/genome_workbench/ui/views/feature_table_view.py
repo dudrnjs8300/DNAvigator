@@ -29,7 +29,8 @@ class FeatureTableView(QTableWidget):
             row = self.rowCount()
             self.insertRow(row)
             start_display, end_display = display_from_internal(feature.start0, feature.end0)
-            strand_text = {1: "+", -1: "-", 0: "?", None: "?"}.get(feature.strand, "?")
+            strand_map: dict[int | None, str] = {1: "+", -1: "-", 0: "?"}
+            strand_text = strand_map.get(feature.strand, "?")
             values = [
                 feature.computed_label(),
                 feature.type,
@@ -46,6 +47,18 @@ class FeatureTableView(QTableWidget):
                     item.setData(Qt.ItemDataRole.UserRole, feature.id)
                 self.setItem(row, col, item)
         self.setSortingEnabled(True)
+
+    def select_feature_row(self, feature_id: str) -> None:
+        """Programmatically select the row for ``feature_id`` without re-emitting
+        featureSelected (avoids a signal feedback loop with the canvas/table sync)."""
+        for row in range(self.rowCount()):
+            item = self.item(row, 0)
+            if item is not None and item.data(Qt.ItemDataRole.UserRole) == feature_id:
+                self.blockSignals(True)
+                self.selectRow(row)
+                self.blockSignals(False)
+                self.scrollToItem(item)
+                return
 
     def _on_selection_changed(self) -> None:
         rows = {index.row() for index in self.selectedIndexes()}

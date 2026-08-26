@@ -1,5 +1,9 @@
-"""Main application window. Assembles docks/views and wires every enabled
-menu action to a real application-service call — no placeholder actions.
+"""Main application window.
+
+The central widget is the genome visualization (Genome Map / Circular Map /
+Feature Table tabs) — not a text list. Every enabled menu action and canvas
+interaction is wired to a real application-service call; nothing here is a
+placeholder.
 """
 
 from __future__ import annotations
@@ -7,47 +11,72 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
     QDockWidget,
     QFileDialog,
     QInputDialog,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QTabWidget,
 )
 
 from genome_workbench.application.annotation_service import AnnotationService
+from genome_workbench.application.blast_service import BlastService
 from genome_workbench.application.export_service import ExportService, ExportValidationError
 from genome_workbench.application.import_service import ImportService
 from genome_workbench.application.project_service import ProjectService
-from genome_workbench.domain.models import Feature, SequenceRecord
+from genome_workbench.application.sequence_operations_service import SequenceOperationsService
+from genome_workbench.domain.blast_models import (
+    BlastInstallation,
+    BlastSearchResult,
+    suggest_program,
+)
+from genome_workbench.domain.locations import LocationPart
+from genome_workbench.domain.models import Feature, SequenceRecord, Topology
 from genome_workbench.ui.actions import make_action
 from genome_workbench.ui.dialogs.add_feature_dialog import AddFeatureDialog
+from genome_workbench.ui.dialogs.apply_blast_hit_dialog import ApplyBlastHitDialog
+from genome_workbench.ui.dialogs.blast_setup_dialog import BlastSetupDialog
+from genome_workbench.ui.dialogs.create_blast_database_dialog import CreateBlastDatabaseDialog
+from genome_workbench.ui.docks.blast_panel import BlastPanel
 from genome_workbench.ui.docks.inspector_dock import InspectorDock
 from genome_workbench.ui.docks.project_explorer_dock import ProjectExplorerDock
+from genome_workbench.ui.views.circular_genome_canvas import CircularGenomeCanvas
 from genome_workbench.ui.views.feature_table_view import FeatureTableView
-from genome_workbench.ui.views.sequence_view import SequenceView
+from genome_workbench.ui.views.genome_map_page import GenomeMapPage
+from genome_workbench.ui.workers.callable_worker import CallableWorker
 from genome_workbench.version import APP_NAME, APP_VERSION
 
 logger = logging.getLogger("genome_workbench.ui")
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, blast_work_dir: Path | None = None) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
-        self.resize(1200, 800)
+        self.resize(1400, 900)
 
         self.project_service = ProjectService()
         self.import_service = ImportService(self.project_service)
         self.export_service = ExportService(self.project_service)
         self.annotation_service = AnnotationService(self.project_service)
+        self.blast_service = BlastService(self.project_service, work_dir=blast_work_dir)
+        self.sequence_ops_service = SequenceOperationsService()
 
         self._current_record: SequenceRecord | None = None
         self._current_feature: Feature | None = None
+        self._blast_installation = BlastInstallation(directory=None)
+        self._active_worker: CallableWorker | None = None
+        self._pending_query_record: SequenceRecord | None = None
+        self._pending_query_fasta: Path | None = None
+        self._pending_query_start0 = 0
+        self._pending_query_end0 = 0
+        self._last_blast_result: BlastSearchResult | None = None
 
         self._build_docks()
         self._build_central_tabs()
@@ -55,36 +84,57 @@ class MainWindow(QMainWindow):
         self._update_action_states()
         self.statusBar().showMessage("No project open")
 
+        self.blast_panel.set_installation(self._blast_installation)
+
     # -- UI construction -----------------------------------------------------
 
     def _build_docks(self) -> None:
-        self._explorer_dock = ProjectExplorerDock(self)
-        self._explorer_dock.recordSelected.connect(self._on_record_selected)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._explorer_dock)
+        self.explorer_dock = ProjectExplorerDock(self)
+        self.explorer_dock.recordSelected.connect(self._on_record_selected)
+        self.explorer_dock.topologyChangeRequested.connect(self._on_topology_change_requested)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.explorer_dock)
 
-        self._inspector_dock = InspectorDock(self)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
+        self.inspector_dock = InspectorDock(self)
+        self.inspector_dock.featureUpdateRequested.connect(self._on_feature_update_requested)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
 
-        self._log_dock = QPlainTextEdit(self)
-        self._log_dock.setReadOnly(True)
-        self._log_dock.setMaximumBlockCount(1000)
-        log_wrapper = QDockWidget("Jobs && Log", self)
-        log_wrapper.setWidget(self._log_dock)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, log_wrapper)
+        self._log_view = QPlainTextEdit(self)
+        self._log_view.setReadOnly(True)
+        self._log_view.setMaximumBlockCount(2000)
+        self.log_dock = QDockWidget("Jobs && Log", self)
+        self.log_dock.setWidget(self._log_view)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_dock)
+
+        self.blast_panel = BlastPanel(self)
+        self.blast_panel.setupRequested.connect(self._on_blast_setup_requested)
+        self.blast_panel.createDatabaseRequested.connect(self._on_create_database_requested)
+        self.blast_panel.runRequested.connect(self._on_run_blast_requested)
+        self.blast_panel.applyRequested.connect(self._on_apply_blast_hit_requested)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.blast_panel)
+        self.tabifyDockWidget(self.log_dock, self.blast_panel)
+        self.blast_panel.raise_()
 
     def _build_central_tabs(self) -> None:
         self._tabs = QTabWidget(self)
 
-        self._overview_view = QPlainTextEdit(self)
-        self._overview_view.setReadOnly(True)
-        self._tabs.addTab(self._overview_view, "Overview")
+        self.genome_map_page = GenomeMapPage(self)
+        self.genome_map_page.featureClicked.connect(self._on_feature_selected_from_view)
+        self.genome_map_page.featureDoubleClicked.connect(self._on_linear_feature_double_clicked)
+        self.genome_map_page.selectionChanged.connect(self._on_canvas_selection_changed)
+        self.genome_map_page.contextMenuRequestedAt.connect(self._on_canvas_context_menu)
+        self.genome_map_page.featureBoundaryEditRequested.connect(
+            self._on_feature_boundary_edit_requested
+        )
+        self._tabs.addTab(self.genome_map_page, "Genome Map")
 
-        self._sequence_view = SequenceView(self)
-        self._tabs.addTab(self._sequence_view, "Sequence")
+        self.circular_canvas = CircularGenomeCanvas(self)
+        self.circular_canvas.featureClicked.connect(self._on_feature_selected_from_view)
+        self.circular_canvas.featureDoubleClicked.connect(self._on_circular_feature_double_clicked)
+        self._tabs.addTab(self.circular_canvas, "Circular Map")
 
-        self._feature_table = FeatureTableView(self)
-        self._feature_table.featureSelected.connect(self._on_feature_selected)
-        self._tabs.addTab(self._feature_table, "Feature Table")
+        self.feature_table = FeatureTableView(self)
+        self.feature_table.featureSelected.connect(self._on_feature_selected_from_view)
+        self._tabs.addTab(self.feature_table, "Feature Table")
 
         self.setCentralWidget(self._tabs)
 
@@ -131,30 +181,34 @@ class MainWindow(QMainWindow):
         self.action_add_feature = make_action(self, "&Add Feature...", self._on_add_feature)
         annotation_menu.addAction(self.action_add_feature)
 
+        view_menu = self.menuBar().addMenu("&View")
+        self.action_zoom_whole_genome = make_action(
+            self, "Fit &Whole Genome", lambda: self.genome_map_page.canvas.zoom_to_whole_genome()
+        )
+        self.action_zoom_selection = make_action(
+            self, "Zoom to &Selection", lambda: self.genome_map_page.canvas.zoom_to_selection()
+        )
+        view_menu.addAction(self.action_zoom_whole_genome)
+        view_menu.addAction(self.action_zoom_selection)
+
         blast_menu = self.menuBar().addMenu("&BLAST")
-        blast_setup = make_action(
-            self,
-            "BLAST Setup...",
-            enabled=False,
-            tooltip="Phase 5에서 구현 예정 (BLAST+ 설치/등록)",
+        self.action_blast_setup = make_action(
+            self, "BLAST Setup...", self._on_blast_setup_requested
         )
-        blast_run = make_action(
-            self,
-            "Run BLAST...",
-            enabled=False,
-            tooltip="Phase 6에서 구현 예정 (BLAST 검색 및 근거 기반 annotation)",
+        self.action_blast_create_db = make_action(
+            self, "Create Database...", self._on_create_database_requested
         )
-        blast_menu.addAction(blast_setup)
-        blast_menu.addAction(blast_run)
+        blast_menu.addAction(self.action_blast_setup)
+        blast_menu.addAction(self.action_blast_create_db)
 
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(make_action(self, "&About", self._on_about))
 
-    # -- State sync -----------------------------------------------------------
+    # -- Logging / state sync -------------------------------------------------
 
     def _log(self, message: str) -> None:
         logger.info(message)
-        self._log_dock.appendPlainText(message)
+        self._log_view.appendPlainText(message)
 
     def _update_action_states(self) -> None:
         is_open = self.project_service.is_open
@@ -167,36 +221,44 @@ class MainWindow(QMainWindow):
         self.action_import_genbank.setEnabled(is_open)
         self.action_undo.setEnabled(is_open and self.project_service.undo_stack.can_undo)
         self.action_redo.setEnabled(is_open and self.project_service.undo_stack.can_redo)
+        self.action_zoom_whole_genome.setEnabled(has_record)
+        self.action_zoom_selection.setEnabled(has_record)
 
     def _refresh_project_explorer(self) -> None:
         if not self.project_service.is_open:
-            self._explorer_dock.set_records([])
+            self.explorer_dock.set_records([])
             return
-        self._explorer_dock.set_records(self.project_service.list_records())
+        records = self.project_service.list_records()
+        counts = {r.id: len(self.project_service.list_features(r.id)) for r in records}
+        self.explorer_dock.set_records(records, counts)
 
     def _refresh_current_record_views(self) -> None:
-        self._sequence_view.set_record(self._current_record)
+        features = (
+            self.project_service.list_features(self._current_record.id)
+            if self._current_record is not None
+            else []
+        )
+        self.genome_map_page.set_record(self._current_record, features)
+        self.circular_canvas.set_record(self._current_record, features)
+        self.feature_table.set_features(features)
         if self._current_record is not None:
-            self._inspector_dock.show_record(self._current_record)
-            self._feature_table.set_features(
-                self.project_service.list_features(self._current_record.id)
-            )
-            self._overview_view.setPlainText(
-                f"Record: {self._current_record.display_id}\n"
-                f"Length: {self._current_record.length} bp\n"
-                f"Molecule type: {self._current_record.molecule_type.value}\n"
-                f"Topology: {self._current_record.topology.value}\n"
-                f"Description: {self._current_record.description}"
-            )
+            self.inspector_dock.show_record(self._current_record)
             self.statusBar().showMessage(
-                f"{self._current_record.display_id} — {self._current_record.length} bp"
+                f"{self._current_record.display_id} — {self._current_record.length:,} bp"
             )
         else:
-            self._inspector_dock.clear()
-            self._feature_table.set_features([])
-            self._overview_view.setPlainText("")
+            self.inspector_dock.clear()
 
-    # -- Menu handlers ---------------------------------------------------------
+    def _refresh_features_only(self) -> None:
+        if self._current_record is None:
+            return
+        features = self.project_service.list_features(self._current_record.id)
+        self.genome_map_page.set_features(features)
+        self.circular_canvas.set_features(features)
+        self.feature_table.set_features(features)
+        self._refresh_project_explorer()
+
+    # -- File menu handlers --------------------------------------------------------
 
     def _on_new_project(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -209,7 +271,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.project_service.create_new(Path(path), name or "Untitled Project")
-        except Exception as exc:  # noqa: BLE001 - shown to user, not swallowed
+        except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "New Project Failed", str(exc))
             return
         self._current_record = None
@@ -252,6 +314,8 @@ class MainWindow(QMainWindow):
         self._log(f"Imported {len(result.records)} record(s) from {path}")
         for issue in result.issues:
             self._log(f"  [{issue.severity}] {issue.message}")
+        if result.records:
+            self._on_record_selected(result.records[0].id)
 
     def _on_import_genbank(self) -> None:
         if not self._guard_project_open():
@@ -267,6 +331,8 @@ class MainWindow(QMainWindow):
         self._log(f"Imported {len(result.records)} record(s) from {path}")
         for issue in result.issues:
             self._log(f"  [{issue.severity}] {issue.message}")
+        if result.records:
+            self._on_record_selected(result.records[0].id)
 
     def _on_save_project(self) -> None:
         if not self._guard_project_open():
@@ -301,28 +367,34 @@ class MainWindow(QMainWindow):
 
     def _on_undo(self) -> None:
         if self.project_service.undo_stack.undo():
-            self._refresh_current_record_views()
+            self._refresh_features_only()
             self._update_action_states()
             self._log("Undo")
 
     def _on_redo(self) -> None:
         if self.project_service.undo_stack.redo():
-            self._refresh_current_record_views()
+            self._refresh_features_only()
             self._update_action_states()
             self._log("Redo")
 
     def _on_add_feature(self) -> None:
         if self._current_record is None:
             return
-        dialog = AddFeatureDialog(self._current_record, self.annotation_service, self)
+        selection = self.genome_map_page.canvas.current_selection()
+        initial_start = selection[0] + 1 if selection else None
+        initial_end = selection[1] if selection else None
+        dialog = AddFeatureDialog(
+            self._current_record,
+            self.annotation_service,
+            self,
+            initial_start_1based=initial_start,
+            initial_end_1based=initial_end,
+        )
         if dialog.exec():
-            self._refresh_current_record_views()
+            self._refresh_features_only()
             self._update_action_states()
             if dialog.created_feature is not None:
                 self._log(f"Created feature: {dialog.created_feature.computed_label()}")
-
-    def _on_exit(self) -> None:
-        self.close()
 
     def _on_about(self) -> None:
         QMessageBox.about(
@@ -332,6 +404,21 @@ class MainWindow(QMainWindow):
             "and annotation workbench.",
         )
 
+    def _on_exit(self) -> None:
+        self.close()
+
+    def _on_topology_change_requested(self, record_id: str, topology_value: str) -> None:
+        if not self._guard_project_open():
+            return
+        record = self.project_service.set_record_topology(record_id, Topology(topology_value))
+        self._refresh_project_explorer()
+        if self._current_record is not None and self._current_record.id == record_id:
+            self._current_record = record
+            self._refresh_current_record_views()
+        self._log(f"Set {record.display_id} topology to {topology_value}")
+
+    # -- Record / feature selection sync --------------------------------------
+
     def _on_record_selected(self, record_id: str) -> None:
         record = self.project_service.get_record(record_id)
         self._current_record = record
@@ -339,20 +426,330 @@ class MainWindow(QMainWindow):
         self._refresh_current_record_views()
         self._update_action_states()
 
-    def _on_feature_selected(self, feature_id: str) -> None:
+    def _find_current_feature(self, feature_id: str) -> Feature | None:
         if self._current_record is None:
-            return
+            return None
         for feature in self.project_service.list_features(self._current_record.id):
             if feature.id == feature_id:
-                self._current_feature = feature
-                self._inspector_dock.show_feature(feature, self._current_record)
-                return
+                return feature
+        return None
+
+    def _on_feature_selected_from_view(self, feature_id: str) -> None:
+        feature = self._find_current_feature(feature_id)
+        if feature is None or self._current_record is None:
+            return
+        self._current_feature = feature
+        self.inspector_dock.show_feature(feature, self._current_record)
+        self.genome_map_page.select_feature(feature_id)
+        self.circular_canvas.select_feature(feature_id)
+        self.feature_table.select_feature_row(feature_id)
+
+    def _on_linear_feature_double_clicked(self, feature_id: str) -> None:
+        self._tabs.setCurrentWidget(self.genome_map_page)
+        self.genome_map_page.zoom_to_feature(feature_id)
+        self._on_feature_selected_from_view(feature_id)
+
+    def _on_circular_feature_double_clicked(self, feature_id: str) -> None:
+        self._tabs.setCurrentWidget(self.genome_map_page)
+        self.genome_map_page.zoom_to_feature(feature_id)
+        self._on_feature_selected_from_view(feature_id)
+
+    def _on_feature_update_requested(self, before: Feature, after: Feature) -> None:
+        self.annotation_service.update_feature(before, after)
+        self._refresh_features_only()
+        if self._current_record is not None:
+            self.inspector_dock.show_feature(after, self._current_record)
+        self._log(f"Updated feature: {after.computed_label()}")
+
+    def _on_feature_boundary_edit_requested(
+        self, feature_id: str, new_start0: int, new_end0: int
+    ) -> None:
+        before = self._find_current_feature(feature_id)
+        if before is None:
+            return
+        if len(before.parts) != 1:
+            QMessageBox.information(
+                self,
+                "Cannot Resize",
+                "Boundary dragging is only supported for simple (single-part) features.",
+            )
+            return
+        after = Feature(
+            id=before.id,
+            record_id=before.record_id,
+            type=before.type,
+            strand=before.strand,
+            location_operator=before.location_operator,
+            parts=[LocationPart(start0=new_start0, end0=new_end0, order_index=0)],
+            qualifiers=before.qualifiers,
+            display_label=before.display_label,
+            parent_ids=list(before.parent_ids),
+            child_ids=list(before.child_ids),
+            source=before.source,
+            score=before.score,
+            phase=before.phase,
+            provenance_id=before.provenance_id,
+            created_at=before.created_at,
+            revision=before.revision,
+        )
+        self._on_feature_update_requested(before, after)
+
+    # -- Selection / context menu ---------------------------------------------------
+
+    def _on_canvas_selection_changed(self, start0: int, end0: int) -> None:
+        if start0 < 0:
+            self.statusBar().showMessage(
+                f"{self._current_record.display_id}" if self._current_record else ""
+            )
+            return
+        length = end0 - start0
+        record_label = self._current_record.display_id if self._current_record else ""
+        self.statusBar().showMessage(
+            f"{record_label}  selection {start0 + 1:,}..{end0:,} ({length:,} bp)"
+        )
+
+    # Menu construction (real modal popup) is kept separate from action
+    # dispatch (_dispatch_selection_action) so tests can drive the dispatch
+    # logic directly instead of fighting QMenu.exec()'s blocking nested
+    # event loop (a PySide6/Shiboken-bound method that cannot be
+    # monkeypatched from Python — assigning QMenu.exec silently has no
+    # effect and the real modal call hangs forever under a fake click).
+    def _on_canvas_context_menu(self, global_pos: QPoint, start0: int, end0: int) -> None:
+        if self._current_record is None:
+            return
+        menu = QMenu(self)
+        actions = {
+            "add_annotation": menu.addAction("Add Annotation..."),
+            "run_blast": menu.addAction("Run BLAST..."),
+        }
+        menu.addSeparator()
+        actions["copy"] = menu.addAction("Copy Sequence")
+        actions["copy_rc"] = menu.addAction("Copy Reverse Complement")
+        actions["translate_plus"] = menu.addAction("Translate (+ strand)")
+        actions["translate_minus"] = menu.addAction("Translate (- strand)")
+        menu.addSeparator()
+        actions["export"] = menu.addAction("Export Selection as FASTA...")
+
+        chosen = menu.exec(global_pos)
+        if chosen is None:
+            return
+        key = next((k for k, action in actions.items() if action is chosen), None)
+        if key is not None:
+            self._dispatch_selection_action(key, start0, end0)
+
+    def _dispatch_selection_action(self, key: str, start0: int, end0: int) -> None:
+        record = self._current_record
+        if record is None:
+            return
+        if key == "add_annotation":
+            dialog = AddFeatureDialog(
+                record,
+                self.annotation_service,
+                self,
+                initial_start_1based=start0 + 1,
+                initial_end_1based=end0,
+            )
+            if dialog.exec():
+                self._refresh_features_only()
+                self._update_action_states()
+        elif key == "run_blast":
+            self._start_blast_from_selection(record, start0, end0)
+        elif key == "copy":
+            QApplication.clipboard().setText(
+                self.sequence_ops_service.get_selection(record, start0, end0)
+            )
+        elif key == "copy_rc":
+            QApplication.clipboard().setText(
+                self.sequence_ops_service.get_selection_reverse_complement(record, start0, end0)
+            )
+        elif key == "translate_plus":
+            protein = self.sequence_ops_service.get_selection_translation(
+                record, start0, end0, strand=1
+            )
+            QMessageBox.information(self, "Translation (+ strand)", protein or "(empty)")
+        elif key == "translate_minus":
+            protein = self.sequence_ops_service.get_selection_translation(
+                record, start0, end0, strand=-1
+            )
+            QMessageBox.information(self, "Translation (- strand)", protein or "(empty)")
+        elif key == "export":
+            path, _ = QFileDialog.getSaveFileName(self, "Export Selection", "", "FASTA (*.fasta)")
+            if path:
+                self.sequence_ops_service.export_selection_fasta(record, start0, end0, Path(path))
+                self._log(f"Exported selection {start0 + 1}..{end0} to {path}")
 
     def _guard_project_open(self) -> bool:
         if not self.project_service.is_open:
             QMessageBox.warning(self, "No Project Open", "Open or create a project first.")
             return False
         return True
+
+    # -- BLAST -----------------------------------------------------------------------
+
+    def _on_blast_setup_requested(self) -> None:
+        dialog = BlastSetupDialog(self._blast_installation.directory, self)
+        dialog.exec()
+        self._blast_installation = dialog.installation
+        self.blast_panel.set_installation(self._blast_installation)
+        self._log(
+            "BLAST installation "
+            + (
+                "fully detected."
+                if self._blast_installation.is_fully_installed()
+                else "incomplete."
+            )
+        )
+
+    def _on_create_database_requested(self) -> None:
+        if not self._blast_installation.has("makeblastdb") or not self._blast_installation.has(
+            "blastdbcmd"
+        ):
+            QMessageBox.warning(
+                self,
+                "BLAST Not Configured",
+                "makeblastdb/blastdbcmd were not found. Run BLAST Setup first.",
+            )
+            return
+        dialog = CreateBlastDatabaseDialog(self)
+        if not dialog.exec():
+            return
+        source_fasta = dialog.source_fasta()
+        molecule_type = dialog.molecule_type()
+        name = dialog.database_name()
+        if not source_fasta.exists():
+            QMessageBox.warning(self, "Create Database", f"File not found: {source_fasta}")
+            return
+
+        self._log(f"Building BLAST database '{name}' from {source_fasta} ...")
+        worker = CallableWorker(
+            self.blast_service.create_database,
+            self._blast_installation,
+            source_fasta,
+            molecule_type,
+            name,
+        )
+        worker.succeeded.connect(self._on_database_created)
+        worker.failed.connect(
+            lambda msg: QMessageBox.critical(self, "Database Creation Failed", msg)
+        )
+        self._active_worker = worker
+        worker.start()
+
+    def _on_database_created(self, database) -> None:
+        self.blast_panel.set_databases(self.blast_service.list_databases())
+        self._log(f"Created BLAST database '{database.name}' ({database.sequence_count} sequences)")
+        self._active_worker = None
+
+    def _start_blast_from_selection(self, record: SequenceRecord, start0: int, end0: int) -> None:
+        if not self.blast_service.list_databases():
+            QMessageBox.information(
+                self,
+                "Run BLAST",
+                "No BLAST database registered yet. Use BLAST > Create Database... first.",
+            )
+            return
+        jobs_dir = self.blast_service.work_dir / "jobs"
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+        query_fasta = jobs_dir / f"query_{record.id}_{start0}_{end0}.fasta"
+        sequence = self.sequence_ops_service.get_selection(record, start0, end0)
+        query_fasta.write_text(
+            f">{record.display_id}:{start0 + 1}-{end0}\n{sequence}\n", encoding="utf-8"
+        )
+
+        self._pending_query_record = record
+        self._pending_query_fasta = query_fasta
+        self._pending_query_start0 = start0
+        self._pending_query_end0 = end0
+
+        self.blast_panel.set_query_context(
+            f"Selection: {record.display_id}:{start0 + 1}-{end0} ({end0 - start0} bp, + strand)"
+        )
+        selected_db = self.blast_panel.selected_database()
+        if selected_db is not None:
+            self.blast_panel.set_suggested_program(
+                suggest_program(record.molecule_type, selected_db.molecule_type)
+            )
+        self.blast_panel.set_databases(self.blast_service.list_databases())
+        self.blast_panel.raise_()
+
+    def _on_run_blast_requested(self) -> None:
+        if self._pending_query_fasta is None or self._pending_query_record is None:
+            QMessageBox.information(
+                self,
+                "Run BLAST",
+                "Select a region on the Genome Map and choose 'Run BLAST...' first.",
+            )
+            return
+        database = self.blast_panel.selected_database()
+        if database is None:
+            QMessageBox.information(self, "Run BLAST", "Select a database first.")
+            return
+        program = self.blast_panel.selected_program()
+        if not self._blast_installation.has(program.value):
+            QMessageBox.warning(
+                self, "Run BLAST", f"{program.value} is not available. Run BLAST Setup first."
+            )
+            return
+        params = self.blast_panel.search_parameters()
+
+        self._log(f"Running {program.value} against '{database.name}' ...")
+        worker = CallableWorker(
+            self.blast_service.run_search,
+            self._blast_installation,
+            database,
+            program,
+            self._pending_query_fasta,
+            params,
+            self._pending_query_record.id,
+            self._pending_query_start0,
+            self._pending_query_end0,
+            1,
+        )
+        worker.succeeded.connect(self._on_blast_search_finished)
+        worker.failed.connect(lambda msg: QMessageBox.critical(self, "BLAST Search Failed", msg))
+        self._active_worker = worker
+        worker.start()
+
+    def _on_blast_search_finished(self, result: BlastSearchResult) -> None:
+        self._last_blast_result = result
+        self.blast_panel.set_result(result)
+        self._log(f"BLAST search complete: {len(result.hits)} hit(s)")
+        self._active_worker = None
+
+    def _on_apply_blast_hit_requested(self) -> None:
+        if self._last_blast_result is None or self._pending_query_record is None:
+            return
+        hit = self.blast_panel.selected_hit()
+        if hit is None or not hit.hsps:
+            QMessageBox.information(self, "Apply Hit", "Select a hit first.")
+            return
+        hsp = hit.hsps[0]
+        dialog = ApplyBlastHitDialog(
+            self._pending_query_record, self._last_blast_result, hit, hsp, self
+        )
+        if not dialog.exec():
+            return
+        genome_start0, genome_end0, genome_strand = dialog.mapped_location()
+        feature = self.blast_service.apply_hit_as_annotation(
+            self.annotation_service,
+            self._pending_query_record,
+            self._last_blast_result,
+            hit,
+            hsp,
+            dialog.feature_type(),
+            dialog.build_qualifiers(),
+        )
+        if (
+            self._current_record is not None
+            and self._current_record.id == self._pending_query_record.id
+        ):
+            self._refresh_features_only()
+        self._log(
+            f"Applied BLAST hit as {feature.type} feature at "
+            f"{genome_start0 + 1}..{genome_end0} (strand {genome_strand:+d})"
+        )
+
+    # -- Qt overrides ------------------------------------------------------------------
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override signature
         self.project_service.close()

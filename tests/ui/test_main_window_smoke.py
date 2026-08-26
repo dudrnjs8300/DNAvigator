@@ -15,31 +15,39 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 pytestmark = pytest.mark.ui
 
 
-def test_main_window_launches_empty(qtbot):
-    window = MainWindow()
+def test_main_window_launches_empty(qtbot, tmp_path):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
     qtbot.addWidget(window)
     assert APP_NAME in window.windowTitle()
     assert not window.project_service.is_open
     assert not window.action_add_feature.isEnabled()
     assert not window.action_export_genbank.isEnabled()
+    # the central widget is the visualization, not a text/table view
+    assert window._tabs.count() == 3
+    assert window._tabs.tabText(0) == "Genome Map"
+    assert window._tabs.tabText(1) == "Circular Map"
+    assert window._tabs.tabText(2) == "Feature Table"
 
 
-def test_blast_menu_actions_are_disabled_placeholders(qtbot):
-    window = MainWindow()
+def test_blast_menu_actions_are_enabled_and_never_crash_without_blast_installed(qtbot, tmp_path):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
     qtbot.addWidget(window)
     menus = [action.menu() for action in window.menuBar().actions() if action.menu()]
     blast_menus = [m for m in menus if m.title() == "&BLAST"]
     assert len(blast_menus) == 1
-    assert blast_menus[0].actions()
+    # setup/create-database entry points must always be reachable (never hidden),
+    # since a missing BLAST+ installation must be discoverable/explainable, not silent
     for action in blast_menus[0].actions():
-        assert not action.isEnabled()
+        assert action.isEnabled()
+    assert not window._blast_installation.is_fully_installed()
+    assert window.blast_service.detect_installation() is not None  # never raises
 
 
 def test_new_project_import_fasta_add_feature_save_reopen(qtbot, tmp_path, monkeypatch):
     project_path = str(tmp_path / "ui_flow" / "project.gwbproj")
     fasta_path = str(FIXTURES_DIR / "simple_linear.fasta")
 
-    window = MainWindow()
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
     qtbot.addWidget(window)
 
     monkeypatch.setattr(
@@ -61,9 +69,13 @@ def test_new_project_import_fasta_add_feature_save_reopen(qtbot, tmp_path, monke
     records = window.project_service.list_records()
     assert len(records) == 1
 
-    window._on_record_selected(records[0].id)
+    # importing auto-selects the first record, and the genome map canvas
+    # must actually be populated (not just a list entry)
     assert window._current_record is not None
-    assert window._sequence_view.current_record is not None
+    assert window.genome_map_page.canvas._record is not None
+    assert window.genome_map_page.canvas._record.id == records[0].id
+    assert window.genome_map_page.canvas.viewport_transform is not None
+    assert window.circular_canvas._record is not None
 
     def _fake_exec(self):
         self.created_feature = self._annotation_service.create_simple_feature(
@@ -82,7 +94,14 @@ def test_new_project_import_fasta_add_feature_save_reopen(qtbot, tmp_path, monke
     window._on_add_feature()
     features = window.project_service.list_features(records[0].id)
     assert len(features) == 1
-    assert window._feature_table.rowCount() == 1
+    assert window.feature_table.rowCount() == 1
+
+    # feature-table -> canvas/inspector sync
+    window._on_feature_selected_from_view(features[0].id)
+    assert window._current_feature is not None
+    assert window._current_feature.id == features[0].id
+    assert window.genome_map_page.canvas._selected_feature_id == features[0].id
+    assert window.circular_canvas._selected_feature_id == features[0].id
 
     window.project_service.close()
     window.project_service.open(Path(project_path))

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from genome_workbench.application.commands import UndoStack
-from genome_workbench.domain.events import AuditEvent
-from genome_workbench.domain.models import Feature, Project, SequenceRecord, utc_now
+from genome_workbench.domain.events import AuditEvent, EventType
+from genome_workbench.domain.models import Feature, Project, SequenceRecord, Topology, utc_now
 from genome_workbench.infrastructure.persistence.sqlite_repository import ProjectRepository
 from genome_workbench.version import APP_VERSION
 
@@ -67,6 +67,17 @@ class ProjectService:
 
     def list_features(self, record_id: str) -> list[Feature]:
         return self._require_repo().list_features(record_id)
+
+    def set_record_topology(self, record_id: str, topology: Topology) -> SequenceRecord:
+        repo = self._require_repo()
+        record = repo.get_record(record_id)
+        if record is None:
+            raise NoOpenProjectError(f"record {record_id} not found")
+        record.topology = topology
+        repo.save_record(record)
+        self.log_audit(EventType.FEATURE_UPDATE, record_id, f"Set topology to {topology.value}")
+        self.touch()
+        return record
 
     def touch(self) -> None:
         self._require_repo().touch_project(utc_now())

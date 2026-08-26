@@ -34,7 +34,12 @@ _COMMON_FEATURE_TYPES = [
 
 class AddFeatureDialog(QDialog):
     def __init__(
-        self, record: SequenceRecord, annotation_service: AnnotationService, parent=None
+        self,
+        record: SequenceRecord,
+        annotation_service: AnnotationService,
+        parent=None,
+        initial_start_1based: int | None = None,
+        initial_end_1based: int | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Add Feature")
@@ -44,11 +49,11 @@ class AddFeatureDialog(QDialog):
 
         self._start_spin = QSpinBox()
         self._start_spin.setRange(1, max(record.length, 1))
-        self._start_spin.setValue(1)
+        self._start_spin.setValue(initial_start_1based or 1)
 
         self._end_spin = QSpinBox()
         self._end_spin.setRange(1, max(record.length, 1))
-        self._end_spin.setValue(min(record.length, 1))
+        self._end_spin.setValue(initial_end_1based or min(record.length, 1))
 
         self._strand_combo = QComboBox()
         self._strand_combo.addItems(["+", "-"])
