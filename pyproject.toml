@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genome-workbench"
+version = "0.1.0"
+description = "Windows local genome sequence visualization and annotation workbench"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "PySide6>=6.11,<7",
+    "biopython>=1.88,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9,<10",
+    "pytest-qt>=4,<5",
+    "pytest-cov>=6,<7",
+    "hypothesis>=6,<7",
+    "ruff>=0.16,<1",
+    "mypy>=2,<3",
+]
+
+[project.scripts]
+genome-workbench = "genome_workbench.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "UP042", # (str, Enum) is intentional: explicit isinstance(x, str) and legacy Enum semantics
+]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+explicit_package_bases = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "genome_workbench.domain.*"
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+markers = [
+    "integration: slower integration tests",
+    "ui: Qt UI tests requiring pytest-qt",
+    "packaging: packaging/build smoke tests",
+]
