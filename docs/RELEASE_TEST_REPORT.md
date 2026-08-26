@@ -7,7 +7,7 @@
 
 ## 요약
 
-- 자동화 테스트: **187 passed**, 0 failed (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`; 실제 BLAST+ 테스트 2건 포함, BLAST+ 미설치 환경에서는 자동 skip)
+- 자동화 테스트: **192 passed**, 0 failed (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`; 실제 BLAST+ 테스트 2건 포함, BLAST+ 미설치 환경에서는 자동 skip)
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench`: 모두 clean
 - Windows 실행파일(onedir) 빌드 성공, `--self-test`/`--smoke-test` exit code 0
 - Portable ZIP: 별도 임시 경로 및 한글/공백 경로로 압축 해제 후 `--self-test` exit code 0 확인
@@ -44,7 +44,7 @@
 
 ## AT-08 cancel and failure
 
-**부분 통과 — failure만 구현, cancel 미구현.** BLAST 실행 실패(예: 잘못된 database 경로, 실행파일 없음)는 `CallableWorker.failed` 신호 → `QMessageBox.critical`로 안전하게 처리되며 project가 손상되지 않는다(수동 확인 및 여러 단위 테스트의 예외 경로로 간접 확인). **그러나 실행 중인 job을 취소하는 UI(cancel 버튼)는 이번 릴리스에 구현되지 않았다.** `docs/KNOWN_LIMITATIONS.md`에 추가 필요.
+**통과.** BLAST 실행 실패(예: 잘못된 database 경로, 실행파일 없음)는 `CallableWorker.failed` 신호 → `QMessageBox.critical`로 안전하게 처리되며 project가 손상되지 않는다. **Cancel UI를 새로 구현했다**: BLAST 패널의 "Cancel Job" 버튼이 `threading.Event`를 서비스 계층까지 전달하고, `infrastructure/blast/runner.py`가 `subprocess.run`(한 번 호출하면 끝날 때까지 끊을 수 없음) 대신 `subprocess.Popen`을 0.2초 간격으로 폴링하는 방식으로 바뀌어 취소 요청 시 실제 프로세스를 즉시 `kill()`한다. `tests/unit/test_blast_runner_cancel.py`가 실제 자식 프로세스(30초 sleep)를 spawn해 취소가 5초 이내(대부분 1초 이내)로 실제로 죽이는지 확인하고, `tests/ui/test_callable_worker_cancel.py`가 worker↔UI 배선을 확인한다. 취소된 job은 에러 대화상자 대신 로그에 기록된다. 부수적으로, 실행 중 새 BLAST job을 중복 시작하는 것도 이제 막힌다(이전에는 막지 않았음).
 
 ## AT-09 atomic export
 
@@ -65,8 +65,7 @@
 
 ## 결론
 
-P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer의 설치/실행/제거와 BLAST 파이프라인(blastn/blastp) 모두 실제 바이너리로 이 개발 머신에서 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
-- Job 취소(cancel) UI
+P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer의 설치/실행/제거, BLAST 파이프라인(blastn/blastp) 실제 바이너리 검증, BLAST job 취소 UI까지 모두 이 개발 머신에서 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
 - 완전히 별도의 clean Windows 사용자 계정/VM에서의 installer 설치 검증
 - blastp 경로의 UI 계층(dispatch/dialog) 전용 자동 테스트(서비스 계층은 실제 바이너리로 검증됨)
 - blastx/tblastn(번역 검색) frame 좌표 매핑의 실제 바이너리 검증(blastn/blastp만 검증됨)

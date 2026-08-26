@@ -108,7 +108,8 @@ Genome Map에서 구간을 드래그 선택한 뒤 우클릭하면:
 
 1. Genome Map에서 구간을 선택하고 우클릭 → **Run BLAST...**
 2. 하단 BLAST 패널에서 database, program(자동 제안됨), e-value, max target sequences 등을 확인/조정하고 **Run BLAST** 클릭.
-3. 결과 표에서 hit을 클릭하면 오른쪽에 HSP alignment(identity, coverage, e-value, bit score, aligned sequence)가 나타난다.
+3. 실행 중에는 **Cancel Job** 버튼이 활성화된다 — 잘못된 database를 선택했거나 너무 오래 걸리면 눌러서 즉시 중단할 수 있다(database 생성 중에도 동일하게 사용 가능). 취소하는 동안에는 새 job을 시작할 수 없다.
+4. 결과 표에서 hit을 클릭하면 오른쪽에 HSP alignment(identity, coverage, e-value, bit score, aligned sequence)가 나타난다.
 
 ### 9.4 BLAST 근거로 annotation 적용
 

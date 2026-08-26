@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         self.blast_panel.createDatabaseRequested.connect(self._on_create_database_requested)
         self.blast_panel.runRequested.connect(self._on_run_blast_requested)
         self.blast_panel.applyRequested.connect(self._on_apply_blast_hit_requested)
+        self.blast_panel.cancelRequested.connect(self._on_cancel_blast_job)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.blast_panel)
         self.tabifyDockWidget(self.log_dock, self.blast_panel)
         self.blast_panel.raise_()
@@ -893,6 +894,11 @@ class MainWindow(QMainWindow):
         )
 
     def _on_create_database_requested(self) -> None:
+        if self._active_worker is not None:
+            QMessageBox.information(
+                self, "Create Database", "A BLAST job is already running. Cancel it first."
+            )
+            return
         if not self._blast_installation.has("makeblastdb") or not self._blast_installation.has(
             "blastdbcmd"
         ):
@@ -919,18 +925,18 @@ class MainWindow(QMainWindow):
             source_fasta,
             molecule_type,
             name,
-        )
+        ).with_cancel_support()
         worker.succeeded.connect(self._on_database_created)
-        worker.failed.connect(
-            lambda msg: QMessageBox.critical(self, "Database Creation Failed", msg)
-        )
+        worker.failed.connect(lambda msg: self._on_blast_job_failed("Database Creation", msg))
         self._active_worker = worker
+        self.blast_panel.set_job_running(True, f"Building database '{name}'...")
         worker.start()
 
     def _on_database_created(self, database) -> None:
         self.blast_panel.set_databases(self.blast_service.list_databases())
         self._log(f"Created BLAST database '{database.name}' ({database.sequence_count} sequences)")
         self._active_worker = None
+        self.blast_panel.set_job_running(False)
 
     def _start_blast_from_selection(self, record: SequenceRecord, start0: int, end0: int) -> None:
         if not self.blast_service.list_databases():
@@ -965,6 +971,11 @@ class MainWindow(QMainWindow):
         self.blast_panel.raise_()
 
     def _on_run_blast_requested(self) -> None:
+        if self._active_worker is not None:
+            QMessageBox.information(
+                self, "Run BLAST", "A BLAST job is already running. Cancel it first."
+            )
+            return
         if self._pending_query_fasta is None or self._pending_query_record is None:
             QMessageBox.information(
                 self,
@@ -996,10 +1007,13 @@ class MainWindow(QMainWindow):
             self._pending_query_start0,
             self._pending_query_end0,
             1,
-        )
+        ).with_cancel_support()
         worker.succeeded.connect(self._on_blast_search_finished)
-        worker.failed.connect(lambda msg: QMessageBox.critical(self, "BLAST Search Failed", msg))
+        worker.failed.connect(lambda msg: self._on_blast_job_failed("BLAST Search", msg))
         self._active_worker = worker
+        self.blast_panel.set_job_running(
+            True, f"Running {program.value} against '{database.name}'..."
+        )
         worker.start()
 
     def _on_blast_search_finished(self, result: BlastSearchResult) -> None:
@@ -1007,6 +1021,20 @@ class MainWindow(QMainWindow):
         self.blast_panel.set_result(result)
         self._log(f"BLAST search complete: {len(result.hits)} hit(s)")
         self._active_worker = None
+        self.blast_panel.set_job_running(False)
+
+    def _on_cancel_blast_job(self) -> None:
+        if self._active_worker is not None:
+            self._active_worker.cancel()
+            self._log("Cancelling BLAST job...")
+
+    def _on_blast_job_failed(self, title: str, message: str) -> None:
+        self._active_worker = None
+        self.blast_panel.set_job_running(False)
+        if "cancelled by the user" in message:
+            self._log(f"{title} cancelled by the user.")
+            return
+        QMessageBox.critical(self, f"{title} Failed", message)
 
     def _on_apply_blast_hit_requested(self) -> None:
         if self._last_blast_result is None or self._pending_query_record is None:

@@ -42,6 +42,7 @@ class BlastPanel(QDockWidget):
     createDatabaseRequested = Signal()
     runRequested = Signal()
     applyRequested = Signal()
+    cancelRequested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("BLAST", parent)
@@ -65,8 +66,8 @@ class BlastPanel(QDockWidget):
         self._installation_status_label.setWordWrap(True)
         setup_button = QPushButton("BLAST Setup...")
         setup_button.clicked.connect(self.setupRequested)
-        create_db_button = QPushButton("Create Database...")
-        create_db_button.clicked.connect(self.createDatabaseRequested)
+        self._create_db_button = QPushButton("Create Database...")
+        self._create_db_button.clicked.connect(self.createDatabaseRequested)
         self._database_list = QListWidget()
         self._database_list.setMaximumWidth(220)
 
@@ -75,7 +76,7 @@ class BlastPanel(QDockWidget):
         layout.addWidget(setup_button)
         layout.addWidget(QLabel("Registered databases:"))
         layout.addWidget(self._database_list)
-        layout.addWidget(create_db_button)
+        layout.addWidget(self._create_db_button)
         group.setMaximumWidth(260)
         return group
 
@@ -98,8 +99,13 @@ class BlastPanel(QDockWidget):
         self._min_coverage_spin = QDoubleSpinBox()
         self._min_coverage_spin.setRange(0.0, 100.0)
         self._min_coverage_spin.setValue(0.0)
-        run_button = QPushButton("Run BLAST")
-        run_button.clicked.connect(self.runRequested)
+        self._run_button = QPushButton("Run BLAST")
+        self._run_button.clicked.connect(self.runRequested)
+        self._cancel_button = QPushButton("Cancel Job")
+        self._cancel_button.setEnabled(False)
+        self._cancel_button.clicked.connect(self.cancelRequested)
+        self._job_status_label = QLabel("")
+        self._job_status_label.setWordWrap(True)
 
         layout = QVBoxLayout(group)
         layout.addWidget(self._query_context_label)
@@ -113,7 +119,9 @@ class BlastPanel(QDockWidget):
         layout.addWidget(self._min_identity_spin)
         layout.addWidget(QLabel("Min query coverage % (display filter)"))
         layout.addWidget(self._min_coverage_spin)
-        layout.addWidget(run_button)
+        layout.addWidget(self._run_button)
+        layout.addWidget(self._cancel_button)
+        layout.addWidget(self._job_status_label)
         group.setMaximumWidth(220)
         return group
 
@@ -138,6 +146,12 @@ class BlastPanel(QDockWidget):
         return group
 
     # -- State updates -----------------------------------------------------------
+
+    def set_job_running(self, running: bool, description: str = "") -> None:
+        self._run_button.setEnabled(not running)
+        self._create_db_button.setEnabled(not running)
+        self._cancel_button.setEnabled(running)
+        self._job_status_label.setText(description if running else "")
 
     def set_installation(self, installation: BlastInstallation) -> None:
         found = ", ".join(sorted(installation.executables)) or "none"

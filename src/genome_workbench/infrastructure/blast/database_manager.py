@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 
 from Bio import SeqIO
@@ -72,6 +73,7 @@ def create_database(
     work_dir: Path,
     makeblastdb_path: Path,
     blastdbcmd_path: Path,
+    cancel_event: threading.Event | None = None,
 ) -> BlastDatabase:
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -84,10 +86,10 @@ def create_database(
     makeblastdb_command = build_makeblastdb_command(
         makeblastdb_path, normalized_fasta, molecule_type, name, db_prefix
     )
-    run_command_or_raise(makeblastdb_command)
+    run_command_or_raise(makeblastdb_command, cancel_event=cancel_event)
 
     info_command = build_blastdbcmd_info_command(blastdbcmd_path, db_prefix, molecule_type)
-    info_result = run_command_or_raise(info_command)
+    info_result = run_command_or_raise(info_command, cancel_event=cancel_event)
     sequence_count = _extract_sequence_count(info_result.stdout)
 
     database = BlastDatabase(

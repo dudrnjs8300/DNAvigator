@@ -8,6 +8,7 @@ Qt UI thread directly.
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from genome_workbench.application.annotation_service import AnnotationService
@@ -115,6 +116,7 @@ class BlastService:
         source_fasta: Path,
         molecule_type: MoleculeType,
         name: str,
+        cancel_event: threading.Event | None = None,
     ) -> BlastDatabase:
         if (
             "makeblastdb" not in installation.executables
@@ -131,6 +133,7 @@ class BlastService:
             work_dir=work_dir,
             makeblastdb_path=Path(installation.executables["makeblastdb"]),
             blastdbcmd_path=Path(installation.executables["blastdbcmd"]),
+            cancel_event=cancel_event,
         )
         self._databases[database.id] = database
         self._save_catalog()
@@ -159,6 +162,7 @@ class BlastService:
         query_source_start0: int = 0,
         query_source_end0: int = 0,
         query_source_strand: int = 1,
+        cancel_event: threading.Event | None = None,
     ) -> BlastSearchResult:
         if program.value not in installation.executables:
             raise RuntimeError(
@@ -169,7 +173,7 @@ class BlastService:
             program_path, query_fasta, Path(database.path_prefix), params
         )
         raw_output_path = self._work_dir / "jobs" / f"{database.id}_{program.value}.tsv"
-        result = run_search_to_file(command, raw_output_path)
+        result = run_search_to_file(command, raw_output_path, cancel_event=cancel_event)
         parsed = parse_tabular_output(result.stdout)
         _translate_ids_back(parsed.hits, database.id_map)
         _apply_display_filters(parsed.hits, params)
