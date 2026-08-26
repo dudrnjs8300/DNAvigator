@@ -170,3 +170,33 @@ def test_export_gff3_and_import_gff3_menu_actions(qtbot, tmp_path, monkeypatch):
     assert len(reimported_features) == 1
     assert reimported_features[0].qualifiers.get_first("gene") == "gffTest"
     window.project_service.close()
+
+
+def test_open_locked_project_offers_read_only_via_ui(qtbot, tmp_path, monkeypatch):
+    from genome_workbench.application.project_service import ProjectService
+    from PySide6.QtWidgets import QMessageBox
+
+    project_path = tmp_path / "locked" / "project.gwbproj"
+    other_instance = ProjectService()
+    other_instance.create_new(project_path, "Other Instance")
+
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getOpenFileName",
+        staticmethod(lambda *a, **k: (str(project_path), "")),
+    )
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QMessageBox.warning",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Open),
+    )
+    window._on_open_project()
+
+    assert window.project_service.is_open
+    assert window.project_service.is_read_only
+    assert not window.action_add_feature.isEnabled()
+    assert not window.action_import_fasta.isEnabled()
+
+    window.project_service.close()
+    other_instance.close()

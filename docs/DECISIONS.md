@@ -48,6 +48,14 @@
 - **판단**: `MainWindow._on_canvas_context_menu`(메뉴 생성 + `exec` 호출)와 `MainWindow._dispatch_selection_action(key, start0, end0)`(실제 동작 처리)를 분리했다. 자동화 테스트는 실제 드래그로 만든 selection에 대해 `_dispatch_selection_action("add_annotation", start0, end0)`를 직접 호출해 검증한다 — 모달 없이 동일한 프로덕션 코드 경로를 그대로 실행한다.
 - **향후 적용**: 다른 QMenu 기반 UI(예: feature table 우클릭 메뉴)를 추가할 때도 이 패턴(표시/처리 분리)을 재사용할 것.
 
+## D-009: Autosave는 "주기적 스냅샷"이 아니라 "즉시 commit"으로 구현
+
+- **명세**: 12.3절은 "autosave: dirty state일 때 일정 간격 및 주요 mutation 후 debounce"를, 12.4절은 별도의 crash recovery snapshot 목록을 요구한다.
+- **현실**: `application/commands.py`의 모든 Command(`FeatureCreateCommand` 등)는 `do()` 시점에 즉시 `repo.save_*()`를 호출하고, `sqlite_repository.py`의 각 save 메서드는 즉시 `self._conn.commit()`한다(Phase 1부터 이미 이런 구조였음). 즉, "편집했지만 아직 저장되지 않은 상태"라는 개념이 애초에 존재하지 않는다 — 매 mutation이 SQLite 파일에 즉시 durable하게 기록된다.
+- **판단**: 이 구조를 유지하고, 명세가 요구하는 "데이터 손실 방지"라는 목표를 이미 충족한다고 보아 별도의 주기적 snapshot/debounce 메커니즘을 새로 만들지 않았다. 대신 spec 12.3/12.4의 나머지 목표(동시 열기 감지, 비정상 종료 감지)는 `infrastructure/filesystem/project_lock.py` + `ProjectService.open(force=, read_only=)`로 구현했다: lock file이 close() 시에만 정상적으로 제거되므로, 다음 open 시 lock file이 남아있다는 사실 자체가 "비정상 종료" 신호가 된다.
+- **트레이드오프**: "Recover as Copy" 같은 스냅샷 선택 UI는 만들지 않았다 — 잃어버릴 미저장 스냅샷이 없기 때문에 필요성이 낮다고 판단했다. 재검토 조건: 향후 "명시적으로 저장하기 전까지는 변경을 적용하지 않는" 트랜잭션 모델(batch edit, staged changes)이 필요해지면 이 판단을 재검토해야 한다.
+- **재검증**: `tests/integration/test_project_service_locking.py`(8 tests)로 lock 획득/해제/충돌/read-only 강제/force-open/stale lock 감지를 검증함.
+
 ## D-004: Feature.strand는 단일 값
 
 - 명세 5.2 표는 Feature.strand를 `+1, -1, 0/None` 단일 값으로 정의한다. Biopython의 `CompoundLocation`은 이론상 part마다 다른 strand를 가질 수 있으나(order operator 등 드문 경우), P0 범위에서는 지원하지 않는다.

@@ -10,16 +10,14 @@
 
 ## Annotation
 
-- **Compound(join)/fuzzy location을 마우스로 만드는 UI가 없음** (Phase 4). `AnnotationService.create_simple_feature`와 canvas의 drag-select/context-menu 흐름은 단일 LocationPart만 생성한다. Domain 계층(`domain/locations.py`)과 GenBank adapter는 compound/fuzzy를 완전히 지원하며 import 시 보존하지만, 수동 생성 경로에서는 아직 노출하지 않는다.
-- **Feature 경계 drag-resize가 단일 part feature에만 동작함** (`ui/views/genome_canvas.py`). Compound feature는 크기 조정 시 명확한 오류 메시지를 표시하고 거부한다(자동 처리 대신 안전하게 실패).
-- **Qualifier 편집기가 공통 6개 필드만 지원** (gene/locus_tag/product/note/db_xref/inference). "전체 qualifiers" key/value 자유 편집기, batch qualifier 연산, annotation template은 아직 없음 (Phase 4).
+- **Fuzzy location을 마우스로 만드는 UI가 없음** (Phase 4 나머지 범위). Compound(join) location은 `AddFeatureDialog`의 "Multiple segments (join)" 체크박스로 생성 가능해졌다(세그먼트를 임의 순서로 입력해도 strand에 따른 생물학적 순서(D-002)로 자동 정렬됨). Fuzzy(`<`/`>`) boundary 입력은 여전히 없음 — domain/adapter는 완전히 지원하고 import 시 보존한다.
+- **기존 compound feature의 part 목록을 Inspector에서 재편집할 수 없음.** Inspector는 여전히 단일 구간(simple) 좌표 편집만 지원한다. Feature 경계 drag-resize도 단일 part feature에만 동작하며, compound feature는 크기 조정 시 명확한 오류 메시지를 표시하고 거부한다(자동 처리 대신 안전하게 실패).
+- **Batch qualifier 연산, annotation template 없음** (Phase 4 나머지 범위). Qualifier 편집은 공통 6개 필드(quick access) + "All other qualifiers" 자유 key/value 테이블(추가/삭제/multi-value)로 개별 feature 단위에서는 완전하지만, 여러 feature를 한 번에 편집하는 기능은 없다.
 - **Batch BLAST(여러 feature 동시 검색) 미지원** — 한 번에 하나의 selection/query만 처리한다 (Phase 6 나머지 범위).
 
 ## 파일 형식
 
-- **GFF3 adapter가 없음** (Phase 2). import/export 모두 FASTA와 GenBank만 지원한다.
-- **GenBank record-level metadata(organism, taxonomy, references, comments)가 최소한만 보존됨.** `SequenceRecord.annotations_json`은 기본값 `"{}"`로 남아있고 GenBank adapter가 이를 채우지 않는다. Phase 2에서 해결 예정.
-- **GTF/EMBL/BED 미지원** — 지원한다고 표시하지 않음(의도된 범위 밖, P0 대상 아님).
+- **GTF/EMBL/BED 미지원** — 지원한다고 표시하지 않음(의도된 범위 밖, P0 대상 아님). GFF3와 GenBank record-level metadata는 Phase 2에서 완료됨(`docs/FORMAT_SUPPORT.md` 참고).
 
 ## BLAST
 
@@ -29,9 +27,8 @@
 - **Tool Setup Wizard의 공식 배포판 자동 다운로드 경로 없음** (Phase 5). 현재 `BlastSetupDialog`는 기존 설치 탐지와 수동 디렉터리 지정만 지원한다.
 - **번역 검색(blastx/tblastn)의 frame 기반 좌표 매핑이 근사적임.** `map_hsp_to_genome_location`은 blastn(뉴클레오타이드 대 뉴클레오타이드) 기준으로 검증되었고, 단위 테스트 4건(정방향/역방향 query × subject strand 조합)을 통과했다. blastx/tblastn의 세부 frame 처리는 Phase 6에서 추가 검증 필요.
 
-## Project / 저장
-
-- **Autosave, crash recovery, project lock(동시 열기 감지) 없음** (Phase 4). 현재는 명시적 `Save`(즉시 commit)만 있다.
+- **별도의 주기적 autosave/snapshot이 없다 — 대신 모든 mutation이 즉시 SQLite에 commit된다.** `application/commands.py`의 각 Command는 실행 즉시 `repo.save_*()`를 호출해 커밋하므로, "저장 안 된 편집 내용"이라는 개념 자체가 없다(잃어버릴 미저장 상태가 없음). `Save`(Ctrl+S)는 `modified_at` timestamp만 갱신하는 사실상 의례적인 동작이다. 이는 spec 12.3이 요구하는 것과 메커니즘은 다르지만(주기적 snapshot이 아니라 즉시 commit) 데이터 손실 방지라는 목표는 동등하게(사실 더 강하게) 충족한다.
+- **Project lock(동시 열기 감지)과 비정상 종료 감지는 구현됨.** `infrastructure/filesystem/project_lock.py` + `ProjectService`: 두 번째 instance가 같은 project를 열려고 하면 읽기 전용으로 열거나 강제로 편집 모드로 열 수 있는 선택지를 제공한다(spec 12.3). 이전 세션이 비정상 종료되어 lock file이 남아있으면 다음 open 시 동일한 경고가 뜬다(spec 12.4의 "비정상 종료 marker" 요구사항에 상응). 다만 "Recover as Copy" UI(스냅샷 목록에서 선택)는 없다 — 애초에 잃어버릴 미저장 스냅샷이 없으므로 필요성이 낮다고 판단했다.
 - **Undo stack이 session 간 유지되지 않음** (설계상 의도됨 — project를 닫으면 초기화).
 - **Record topology 변경(linear/circular)이 undo 불가능** — `ProjectService.set_record_topology`는 undo stack을 거치지 않는 단순 mutation이다. 실수로 변경해도 되돌리기는 다시 우클릭으로 반대 값을 선택해야 한다.
 

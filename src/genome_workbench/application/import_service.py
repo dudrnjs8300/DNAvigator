@@ -28,7 +28,7 @@ class ImportService:
     def import_fasta(
         self, path: Path, molecule_type_hint: MoleculeType | None = None
     ) -> ImportResult:
-        repo = self._project_service.get_repository()
+        repo = self._project_service.require_writable()
         parsed = read_fasta(Path(path), molecule_type_hint=molecule_type_hint)
         for record in parsed.records:
             repo.save_record(record)
@@ -42,7 +42,7 @@ class ImportService:
         return ImportResult(records=parsed.records, issues=list(parsed.issues))
 
     def import_genbank(self, path: Path) -> ImportResult:
-        repo = self._project_service.get_repository()
+        repo = self._project_service.require_writable()
         parsed = read_genbank(Path(path))
         for record in parsed.records:
             repo.save_record(record)
@@ -63,7 +63,7 @@ class ImportService:
         )
 
     def import_gff3(self, path: Path, external_fasta_path: Path | None = None) -> ImportResult:
-        repo = self._project_service.get_repository()
+        repo = self._project_service.require_writable()
         parsed = read_gff3(Path(path))
         issues = list(parsed.issues)
 

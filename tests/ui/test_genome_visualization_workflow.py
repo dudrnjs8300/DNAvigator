@@ -231,3 +231,67 @@ def test_blast_run_and_apply_hit_as_annotation_end_to_end(qtbot, tmp_path, monke
     assert provenance is not None
     assert provenance.subject_id == "fake_subject_1"
     assert provenance.tool_name == "blastn"
+
+
+def test_inspector_advanced_qualifier_editor_add_and_apply(qtbot, tmp_path, monkeypatch):
+    from genome_workbench.ui.docks.inspector_dock import InspectorDock
+
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    record = _open_project_with_fasta(window, tmp_path, monkeypatch)
+
+    feature = window.annotation_service.create_simple_feature(
+        record, 101, 300, 1, "misc_feature", QualifierSet.from_pairs([("EC_number", "1.1.1.1")])
+    )
+    window._refresh_features_only()
+    window._on_feature_selected_from_view(feature.id)
+
+    inspector: InspectorDock = window.inspector_dock
+    assert inspector._advanced_qualifier_table.rowCount() == 1  # EC_number is not a common field
+    assert inspector._advanced_qualifier_table.item(0, 0).text() == "EC_number"
+
+    inspector._on_add_qualifier_row()
+    new_row = inspector._advanced_qualifier_table.rowCount() - 1
+    inspector._advanced_qualifier_table.item(new_row, 0).setText("custom_key")
+    inspector._advanced_qualifier_table.item(new_row, 1).setText("custom_value")
+
+    captured = {}
+    inspector.featureUpdateRequested.connect(lambda before, after: captured.update(after=after))
+    inspector._on_apply()
+
+    assert "after" in captured
+    updated = captured["after"]
+    assert updated.qualifiers.get_first("custom_key") == "custom_value"
+    assert updated.qualifiers.get_first("EC_number") == "1.1.1.1"
+
+
+def test_add_feature_dialog_join_mode_creates_compound_feature(qtbot, tmp_path, monkeypatch):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    record = _open_project_with_fasta(window, tmp_path, monkeypatch)
+
+    dialog = AddFeatureDialog(record, window.annotation_service, window)
+    qtbot.addWidget(dialog)
+
+    dialog._join_checkbox.setChecked(True)
+    assert dialog._location_stack.currentWidget() is dialog._compound_location_widget
+
+    # replace the single default segment row with two explicit segments,
+    # given out of genomic order to exercise the ascending-order derivation
+    dialog._segments_table.setRowCount(0)
+    dialog._add_segment_row(300, 350)
+    dialog._add_segment_row(101, 150)
+    dialog._strand_combo.setCurrentText("-")
+    dialog._update_preview()
+    assert "Length: 101 bp" in dialog._preview_text.toPlainText()
+
+    dialog._on_accept()
+
+    assert dialog.created_feature is not None
+    feature = dialog.created_feature
+    assert len(feature.parts) == 2
+    # minus strand -> descending genomic order (D-002), regardless of table entry order
+    assert [(p.start0, p.end0) for p in feature.parts] == [(299, 350), (100, 150)]
+
+    persisted = window.project_service.list_features(record.id)
+    assert any(f.id == feature.id for f in persisted)

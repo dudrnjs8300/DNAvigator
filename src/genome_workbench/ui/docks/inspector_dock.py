@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDockWidget,
     QFormLayout,
@@ -18,6 +19,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -66,6 +69,21 @@ class InspectorDock(QDockWidget):
             key: QLineEdit() for key in _COMMON_QUALIFIER_KEYS
         }
 
+        self._advanced_qualifier_table = QTableWidget(0, 2)
+        self._advanced_qualifier_table.setHorizontalHeaderLabels(["Key", "Value"])
+        self._advanced_qualifier_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._advanced_qualifier_table.setMaximumHeight(140)
+        add_row_button = QPushButton("Add Qualifier")
+        remove_row_button = QPushButton("Remove Selected")
+        add_row_button.clicked.connect(self._on_add_qualifier_row)
+        remove_row_button.clicked.connect(self._on_remove_qualifier_row)
+        advanced_buttons = QHBoxLayout()
+        advanced_buttons.addWidget(add_row_button)
+        advanced_buttons.addWidget(remove_row_button)
+        advanced_buttons.addStretch()
+
         self._nucleotide_preview = QPlainTextEdit()
         self._nucleotide_preview.setReadOnly(True)
         self._nucleotide_preview.setMaximumHeight(60)
@@ -83,6 +101,9 @@ class InspectorDock(QDockWidget):
         form.addRow("End (1-based inclusive)", self._end_spin)
         for key, edit in self._qualifier_edits.items():
             form.addRow(f"/{key}", edit)
+        form.addRow(QLabel("All other qualifiers:"))
+        form.addRow(self._advanced_qualifier_table)
+        form.addRow(advanced_buttons)
         form.addRow("Nucleotide", self._nucleotide_preview)
         form.addRow("Translation", self._translation_preview)
         form.addRow("Validation", self._validation_label)
@@ -108,7 +129,20 @@ class InspectorDock(QDockWidget):
         self._strand_combo.currentTextChanged.connect(self._refresh_preview)
         self._start_spin.valueChanged.connect(self._refresh_preview)
         self._end_spin.valueChanged.connect(self._refresh_preview)
+        self._advanced_qualifier_table.itemChanged.connect(self._refresh_preview)
         return widget
+
+    def _on_add_qualifier_row(self) -> None:
+        row = self._advanced_qualifier_table.rowCount()
+        self._advanced_qualifier_table.insertRow(row)
+        self._advanced_qualifier_table.setItem(row, 0, QTableWidgetItem(""))
+        self._advanced_qualifier_table.setItem(row, 1, QTableWidgetItem(""))
+
+    def _on_remove_qualifier_row(self) -> None:
+        rows = sorted({index.row() for index in self._advanced_qualifier_table.selectedIndexes()})
+        for row in reversed(rows):
+            self._advanced_qualifier_table.removeRow(row)
+        self._refresh_preview()
 
     def show_record(self, record: SequenceRecord) -> None:
         self._record = record
@@ -150,6 +184,19 @@ class InspectorDock(QDockWidget):
         self._end_spin.blockSignals(False)
         for key, edit in self._qualifier_edits.items():
             edit.setText(feature.qualifiers.get_first(key) or "")
+
+        self._advanced_qualifier_table.blockSignals(True)
+        self._advanced_qualifier_table.setRowCount(0)
+        for key, values in feature.qualifiers.items():
+            if key in _COMMON_QUALIFIER_KEYS:
+                continue
+            for value in values:
+                row = self._advanced_qualifier_table.rowCount()
+                self._advanced_qualifier_table.insertRow(row)
+                self._advanced_qualifier_table.setItem(row, 0, QTableWidgetItem(key))
+                self._advanced_qualifier_table.setItem(row, 1, QTableWidgetItem(value))
+        self._advanced_qualifier_table.blockSignals(False)
+
         self._provenance_label.setText(feature.provenance_id or "Manual / Imported")
         self._refresh_preview()
 
@@ -197,9 +244,13 @@ class InspectorDock(QDockWidget):
         for key, edit in self._qualifier_edits.items():
             if edit.text():
                 qualifiers.add(key, edit.text())
-        for key, values in self._feature.qualifiers.items():
-            if key not in _COMMON_QUALIFIER_KEYS:
-                qualifiers.set_all(key, values)
+        for row in range(self._advanced_qualifier_table.rowCount()):
+            key_item = self._advanced_qualifier_table.item(row, 0)
+            value_item = self._advanced_qualifier_table.item(row, 1)
+            key = key_item.text().strip() if key_item else ""
+            value = value_item.text() if value_item else ""
+            if key and key not in _COMMON_QUALIFIER_KEYS:
+                qualifiers.add(key, value)
         return Feature(
             id=self._feature.id,
             record_id=self._feature.record_id,

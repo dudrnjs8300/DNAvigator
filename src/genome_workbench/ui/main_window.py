@@ -38,6 +38,7 @@ from genome_workbench.domain.blast_models import (
 )
 from genome_workbench.domain.locations import LocationPart
 from genome_workbench.domain.models import Feature, SequenceRecord, Topology
+from genome_workbench.infrastructure.filesystem.project_lock import ProjectLockedError
 from genome_workbench.ui.actions import make_action
 from genome_workbench.ui.dialogs.add_feature_dialog import AddFeatureDialog
 from genome_workbench.ui.dialogs.apply_blast_hit_dialog import ApplyBlastHitDialog
@@ -216,19 +217,22 @@ class MainWindow(QMainWindow):
 
     def _update_action_states(self) -> None:
         is_open = self.project_service.is_open
+        writable = is_open and not self.project_service.is_read_only
         has_record = self._current_record is not None
         has_records = is_open and bool(self.project_service.list_records())
-        self.action_save_project.setEnabled(is_open)
+        self.action_save_project.setEnabled(writable)
         self.action_export_genbank.setEnabled(has_records)
         self.action_export_gff3.setEnabled(has_records)
-        self.action_add_feature.setEnabled(has_record)
-        self.action_import_fasta.setEnabled(is_open)
-        self.action_import_genbank.setEnabled(is_open)
-        self.action_import_gff3.setEnabled(is_open)
-        self.action_undo.setEnabled(is_open and self.project_service.undo_stack.can_undo)
-        self.action_redo.setEnabled(is_open and self.project_service.undo_stack.can_redo)
+        self.action_add_feature.setEnabled(has_record and writable)
+        self.action_import_fasta.setEnabled(writable)
+        self.action_import_genbank.setEnabled(writable)
+        self.action_import_gff3.setEnabled(writable)
+        self.action_undo.setEnabled(writable and self.project_service.undo_stack.can_undo)
+        self.action_redo.setEnabled(writable and self.project_service.undo_stack.can_redo)
         self.action_zoom_whole_genome.setEnabled(has_record)
         self.action_zoom_selection.setEnabled(has_record)
+        if is_open and self.project_service.is_read_only:
+            self.statusBar().showMessage("Project open read-only", 5000)
 
     def _refresh_project_explorer(self) -> None:
         if not self.project_service.is_open:
@@ -294,6 +298,9 @@ class MainWindow(QMainWindow):
             return
         try:
             self.project_service.open(Path(path))
+        except ProjectLockedError as exc:
+            self._handle_locked_project(Path(path), exc)
+            return
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Open Project Failed", str(exc))
             return
@@ -302,6 +309,37 @@ class MainWindow(QMainWindow):
         self._refresh_current_record_views()
         self._update_action_states()
         self._log(f"Opened project: {path}")
+
+    def _handle_locked_project(self, path: Path, exc: ProjectLockedError) -> None:
+        info = exc.lock_info
+        choice = QMessageBox.warning(
+            self,
+            "Project Already Open",
+            f"This project appears to already be open (pid={info.pid}, host={info.hostname}, "
+            f"since {info.opened_at}), or it was not closed cleanly last time.\n\n"
+            "Open read-only, or force-open for editing (only do this if you are sure no "
+            "other instance has it open)?",
+            buttons=QMessageBox.StandardButton.Open
+            | QMessageBox.StandardButton.Retry
+            | QMessageBox.StandardButton.Cancel,
+        )
+        # Open = read-only, Retry = force open for editing, Cancel = abort
+        if choice == QMessageBox.StandardButton.Cancel:
+            return
+        try:
+            if choice == QMessageBox.StandardButton.Open:
+                self.project_service.open(path, read_only=True)
+                self._log(f"Opened project read-only: {path}")
+            else:
+                self.project_service.open(path, force=True)
+                self._log(f"Force-opened project for editing: {path}")
+        except Exception as exc2:  # noqa: BLE001
+            QMessageBox.critical(self, "Open Project Failed", str(exc2))
+            return
+        self._current_record = None
+        self._refresh_project_explorer()
+        self._refresh_current_record_views()
+        self._update_action_states()
 
     def _on_import_fasta(self) -> None:
         if not self._guard_project_open():
