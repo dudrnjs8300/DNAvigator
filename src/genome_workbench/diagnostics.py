@@ -149,15 +149,19 @@ def run_smoke_test(fixture_dir: Path, output_dir: Path) -> SmokeTestResult:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    fasta_candidates = sorted(Path(fixture_dir).glob("*.fasta")) + sorted(
-        Path(fixture_dir).glob("*.fa")
-    )
-    if not fasta_candidates:
-        result.steps.append(
-            CheckResult("locate_fixture", False, f"no .fasta/.fa file found in {fixture_dir}")
+    preferred = Path(fixture_dir) / "simple_linear.fasta"
+    if preferred.exists():
+        fasta_path = preferred
+    else:
+        fasta_candidates = sorted(Path(fixture_dir).glob("*.fasta")) + sorted(
+            Path(fixture_dir).glob("*.fa")
         )
-        return result
-    fasta_path = fasta_candidates[0]
+        if not fasta_candidates:
+            result.steps.append(
+                CheckResult("locate_fixture", False, f"no .fasta/.fa file found in {fixture_dir}")
+            )
+            return result
+        fasta_path = fasta_candidates[0]
     result.steps.append(CheckResult("locate_fixture", True, str(fasta_path)))
 
     project_path = output_dir / "smoke_test.gwbproj"
@@ -203,8 +207,9 @@ def run_smoke_test(fixture_dir: Path, output_dir: Path) -> SmokeTestResult:
         result.steps.append(
             CheckResult(
                 "reopen_project",
-                len(reopened_records) == 1,
-                f"{len(reopened_records)} record(s) after reopen",
+                len(reopened_records) == len(import_result.records),
+                f"{len(reopened_records)} record(s) after reopen "
+                f"(expected {len(import_result.records)})",
             )
         )
 
