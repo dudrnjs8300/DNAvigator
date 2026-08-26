@@ -11,7 +11,7 @@
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench`: 모두 clean
 - Windows 실행파일(onedir) 빌드 성공, `--self-test`/`--smoke-test` exit code 0
 - Portable ZIP: 별도 임시 경로 및 한글/공백 경로로 압축 해제 후 `--self-test` exit code 0 확인
-- Installer: **빌드하지 못함** (Inno Setup Compiler가 이 환경에 없음)
+- Installer: Inno Setup 6로 컴파일 성공, silent 설치(관리자 권한 불필요) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 개발 머신에서 검증. **완전히 별도의 clean Windows 사용자 계정/VM에서의 검증은 아직 하지 못함** (AT-10 참고)
 - 실제 NCBI BLAST+ 바이너리: **사용하지 못함** (설치되어 있지 않음) — 대역(mock) 실행파일로 파이프라인 자체는 검증
 
 ## AT-01 FASTA manual annotation round-trip
@@ -52,15 +52,21 @@
 
 ## AT-10 Windows clean-machine
 
-**검증하지 못함.** Python과 BLAST가 설치되지 않은 별도의 clean Windows VM은 이 세션에서 준비하지 못했다. 대신 다음으로 대체 검증했다:
-- 개발 머신 자체에는 BLAST+가 설치되어 있지 않으므로, "BLAST 미설치 상태에서 self-test가 core 실패로 처리되지 않고 `optional_tool_unavailable`로 분류됨"은 실제로 검증됨.
-- Portable ZIP을 완전히 다른 임시 경로(및 한글/공백 경로)에 압축 해제해 `--self-test`/GUI 기동을 확인 — "이 실행파일 자체가 별도 Python 설치 없이 독립 실행됨"은 검증됨.
-- 그러나 "완전히 새로운 Windows 사용자 계정/클린 VM에서의 installer 설치 → 실행 → BLAST Setup Wizard 노출 → 제거"는 수행하지 못했다.
+**부분 검증 — installer는 이 개발 머신에서 실제 설치/제거 검증됨, 완전히 별도의 clean 계정/VM은 아직 없음.** 이번 세션에서 다음을 실제로 수행했다:
+- `iscc installer\genome_workbench.iss`로 installer(`GenomeWorkbench-0.1.0-win-x64-setup.exe`) 컴파일 성공.
+- `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LANG=english`로 silent 설치 — `PrivilegesRequired=lowest` 설정대로 관리자 권한 없이 `%LOCALAPPDATA%\Programs\GenomeWorkbench`에 설치됨.
+- 설치된 실행파일의 `--self-test`/`--smoke-test` 모두 exit code 0, Start Menu 바로가기(`GenomeWorkbench.lnk`) 생성 확인.
+- `unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`로 silent 제거 — 설치 디렉터리와 바로가기가 깨끗하게 제거됨을 확인(사용자 데이터는 애초에 설치 디렉터리 밖에 있어 영향 없음).
+- (참고) 언어를 2개 이상 등록하면 `/VERYSILENT`만으로는 언어 선택 대화상자가 떠서 자동화 설치가 멈춘다 — `/LANG=`을 함께 지정해야 한다. 대화형(GUI) 설치에서는 해당되지 않는 제약이다.
+- 개발 머신 자체에는 BLAST+가 설치되어 있지 않으므로, "BLAST 미설치 상태에서 self-test가 core 실패로 처리되지 않고 `optional_tool_unavailable`로 분류됨"도 실제로 검증됨.
+- Portable ZIP을 완전히 다른 임시 경로(및 한글/공백 경로)에 압축 해제해 `--self-test`를 확인 — "이 실행파일 자체가 별도 Python 설치 없이 독립 실행됨"도 검증됨.
+
+여전히 남은 것: **완전히 새로운 Windows 사용자 계정 또는 clean VM**에서의 검증(이 개발 머신은 Python/개발 도구가 이미 설치된 환경이라, "이 머신에 아무것도 없어도 동작하는가"를 완벽히 대체하지 못한다), 그리고 BLAST Setup Wizard를 통한 실제 BLAST+ 인식 노출 확인.
 
 ## 결론
 
-P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되지만, 다음은 아직 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
+P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer도 이 개발 머신에서의 설치/실행/제거까지 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
 - 실제 NCBI BLAST+ 바이너리로의 재검증
 - Job 취소(cancel) UI
-- Installer 빌드 및 clean-machine 설치 검증
+- 완전히 별도의 clean Windows 사용자 계정/VM에서의 installer 설치 검증
 - protein(blastp) BLAST 경로의 전용 e2e 테스트

@@ -6,9 +6,17 @@
 ; (requires Inno Setup 6, https://jrsoftware.org/isinfo.php - not bundled
 ; with this repository; install it separately before running iscc.)
 ;
-; This script has been written but NOT compiled in this environment (no
-; Inno Setup Compiler was available). Verify it builds and installs cleanly
-; before shipping — do not claim it is a verified installer until then.
+; Compiled and verified on the development machine: silent install
+; (/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LANG=english) placed the app
+; under %LOCALAPPDATA%\Programs\GenomeWorkbench with no admin prompt
+; (PrivilegesRequired=lowest working as intended), --self-test/--smoke-test
+; passed from the installed location, the Start Menu shortcut was created,
+; and silent uninstall removed both cleanly. Not yet verified on a fully
+; separate clean Windows user account/VM — see docs/RELEASE_TEST_REPORT.md.
+;
+; Note: with two [Languages] entries registered, /VERYSILENT alone still
+; shows the language-picker dialog and blocks; pass /LANG=english (or
+; /LANG=korean) for unattended installs.
 
 #define MyAppName "GenomeWorkbench"
 #define MyAppVersion "0.1.0"
