@@ -12,6 +12,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 
 from genome_workbench.domain.blast_models import BlastInstallation
+from genome_workbench.domain.models import Topology
 from genome_workbench.domain.qualifiers import QualifierSet
 from genome_workbench.ui.dialogs.add_feature_dialog import AddFeatureDialog
 from genome_workbench.ui.dialogs.apply_blast_hit_dialog import ApplyBlastHitDialog
@@ -44,6 +45,28 @@ def _open_project_with_fasta(window: MainWindow, tmp_path: Path, monkeypatch):
     )
     window._on_import_fasta()
     return window.project_service.list_records()[0]
+
+
+def _new_empty_project(window: MainWindow, tmp_path: Path, monkeypatch, name: str = "Project"):
+    project_path = str(tmp_path / name / "project.gwbproj")
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getSaveFileName",
+        staticmethod(lambda *a, **k: (project_path, "")),
+    )
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QInputDialog.getText",
+        staticmethod(lambda *a, **k: (name, True)),
+    )
+    window._on_new_project()
+
+
+def _import_genbank_fixture(window: MainWindow, filename: str, monkeypatch):
+    path = str(FIXTURES_DIR / filename)
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getOpenFileName",
+        staticmethod(lambda *a, **k: (path, "")),
+    )
+    window._on_import_genbank()
 
 
 def test_wheel_zoom_and_fit_whole_genome_change_viewport(qtbot, tmp_path, monkeypatch):
@@ -339,3 +362,69 @@ def test_reverse_complement_record_via_context_menu_dispatch(qtbot, tmp_path, mo
     records = window.project_service.list_records()
     new_record = next(r for r in records if r.id != record.id)
     assert new_record.sequence == reverse_complement(record.sequence)
+
+
+def test_circular_topology_drives_which_map_tab_is_available(qtbot, tmp_path, monkeypatch):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    _new_empty_project(window, tmp_path, monkeypatch, "Topology Project")
+    _import_genbank_fixture(window, "annotated_linear.gbk", monkeypatch)
+    _import_genbank_fixture(window, "circular_origin.gbk", monkeypatch)
+
+    records = window.project_service.list_records()
+    linear_record = next(r for r in records if r.topology == Topology.LINEAR)
+    circular_record = next(r for r in records if r.topology == Topology.CIRCULAR)
+
+    circular_tab_index = window._tabs.indexOf(window.circular_canvas)
+
+    # a genuinely linear assembly has no origin to draw a ring around, so the
+    # Circular Map tab must not even be selectable
+    window._on_record_selected(linear_record.id)
+    assert window._tabs.isTabEnabled(circular_tab_index) is False
+    assert window._tabs.currentWidget() is window.genome_map_page
+
+    # a circular assembly defaults to the circular map (linear stays available too)
+    window._on_record_selected(circular_record.id)
+    assert window._tabs.isTabEnabled(circular_tab_index) is True
+    assert window._tabs.currentWidget() is window.circular_canvas
+    window._tabs.setCurrentWidget(window.genome_map_page)
+    assert window._tabs.currentWidget() is window.genome_map_page  # still selectable manually
+
+    # switching back to the linear record must fall back off the now-disabled tab
+    window._on_record_selected(linear_record.id)
+    assert window._tabs.currentWidget() is window.genome_map_page
+    assert window._tabs.isTabEnabled(circular_tab_index) is False
+
+
+def test_find_feature_by_gene_name_navigates_to_match(qtbot, tmp_path, monkeypatch):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    with qtbot.waitExposed(window):
+        window.show()
+
+    _new_empty_project(window, tmp_path, monkeypatch, "Find Project")
+    _import_genbank_fixture(window, "annotated_linear.gbk", monkeypatch)
+
+    window.action_find_feature.trigger()
+    assert window.find_dialog.isVisible()
+
+    window.find_dialog._query_edit.setText("geneB")
+    qtbot.wait(10)
+    assert window.find_dialog._results.rowCount() >= 1
+
+    # a substring match on a qualifier value (not just gene/label) must also work
+    window.find_dialog._query_edit.setText("ribosomal")
+    qtbot.wait(10)
+    assert window.find_dialog._results.rowCount() == 1
+
+    window.find_dialog._query_edit.setText("geneB")
+    qtbot.wait(10)
+    window.find_dialog._activate_row(0)
+
+    assert window._current_feature is not None
+    assert window._current_feature.qualifiers.get_first("gene") == "geneB"
+    assert window._tabs.currentWidget() is window.genome_map_page
+    assert (
+        window.genome_map_page.canvas.viewport_transform.visible_length
+        < window._current_record.length
+    )

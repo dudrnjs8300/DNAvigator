@@ -45,6 +45,7 @@ from genome_workbench.ui.dialogs.add_feature_dialog import AddFeatureDialog
 from genome_workbench.ui.dialogs.apply_blast_hit_dialog import ApplyBlastHitDialog
 from genome_workbench.ui.dialogs.blast_setup_dialog import BlastSetupDialog
 from genome_workbench.ui.dialogs.create_blast_database_dialog import CreateBlastDatabaseDialog
+from genome_workbench.ui.dialogs.find_feature_dialog import FindFeatureDialog
 from genome_workbench.ui.docks.blast_panel import BlastPanel
 from genome_workbench.ui.docks.inspector_dock import InspectorDock
 from genome_workbench.ui.docks.project_explorer_dock import ProjectExplorerDock
@@ -83,6 +84,10 @@ class MainWindow(QMainWindow):
         self._build_docks()
         self._build_central_tabs()
         self._build_menus()
+
+        self.find_dialog = FindFeatureDialog(self.project_service, self)
+        self.find_dialog.featureChosen.connect(self._on_find_feature_chosen)
+
         self._update_action_states()
         self.statusBar().showMessage("No project open")
 
@@ -206,6 +211,11 @@ class MainWindow(QMainWindow):
         )
         edit_menu.addAction(self.action_undo)
         edit_menu.addAction(self.action_redo)
+        edit_menu.addSeparator()
+        self.action_find_feature = make_action(
+            self, "&Find Feature...", self._on_find_feature_requested, shortcut="Ctrl+F"
+        )
+        edit_menu.addAction(self.action_find_feature)
 
         annotation_menu = self.menuBar().addMenu("&Annotation")
         self.action_add_feature = make_action(self, "&Add Feature...", self._on_add_feature)
@@ -259,6 +269,7 @@ class MainWindow(QMainWindow):
         self.action_import_gff3.setEnabled(writable)
         self.action_undo.setEnabled(writable and self.project_service.undo_stack.can_undo)
         self.action_redo.setEnabled(writable and self.project_service.undo_stack.can_redo)
+        self.action_find_feature.setEnabled(has_records)
         self.action_zoom_whole_genome.setEnabled(has_record)
         self.action_zoom_selection.setEnabled(has_record)
         if is_open and self.project_service.is_read_only:
@@ -288,6 +299,29 @@ class MainWindow(QMainWindow):
             )
         else:
             self.inspector_dock.clear()
+        self._apply_topology_tab_state()
+
+    def _apply_topology_tab_state(self) -> None:
+        """Circular Map only makes sense for a record actually assembled as circular.
+
+        A linear molecule has no biological origin point to draw a ring around, so
+        the tab is disabled (and the view falls back to the linear map) whenever the
+        current record isn't circular, per the requirement that topology drives which
+        map is shown.
+        """
+        circular_index = self._tabs.indexOf(self.circular_canvas)
+        is_circular = (
+            self._current_record is not None and self._current_record.topology == Topology.CIRCULAR
+        )
+        self._tabs.setTabEnabled(circular_index, is_circular)
+        if not is_circular and self._tabs.currentIndex() == circular_index:
+            self._tabs.setCurrentWidget(self.genome_map_page)
+
+    def _select_default_tab_for_current_record(self) -> None:
+        if self._current_record is not None and self._current_record.topology == Topology.CIRCULAR:
+            self._tabs.setCurrentWidget(self.circular_canvas)
+        else:
+            self._tabs.setCurrentWidget(self.genome_map_page)
 
     def _refresh_features_only(self) -> None:
         if self._current_record is None:
@@ -618,6 +652,7 @@ class MainWindow(QMainWindow):
         if self._current_record is not None and self._current_record.id == record_id:
             self._current_record = record
             self._refresh_current_record_views()
+            self._select_default_tab_for_current_record()
         self._log(f"Set {record.display_id} topology to {topology_value}")
 
     # -- Record / feature selection sync --------------------------------------
@@ -628,6 +663,19 @@ class MainWindow(QMainWindow):
         self._current_feature = None
         self._refresh_current_record_views()
         self._update_action_states()
+        self._select_default_tab_for_current_record()
+
+    def _on_find_feature_requested(self) -> None:
+        if not self._guard_project_open():
+            return
+        self.find_dialog.open_for_search()
+
+    def _on_find_feature_chosen(self, record_id: str, feature_id: str) -> None:
+        if self._current_record is None or self._current_record.id != record_id:
+            self._on_record_selected(record_id)
+        self._tabs.setCurrentWidget(self.genome_map_page)
+        self.genome_map_page.zoom_to_feature(feature_id)
+        self._on_feature_selected_from_view(feature_id)
 
     def _find_current_feature(self, feature_id: str) -> Feature | None:
         if self._current_record is None:
