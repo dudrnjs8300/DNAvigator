@@ -101,11 +101,22 @@ Genome Map에서 구간을 드래그 선택한 뒤 우클릭하면:
 - **Extract Selection as New Record...**: 선택 구간을 새 record로 project에 추가한다(원본은 바뀌지 않음)
 - **Reverse Complement Whole Record as New Record...**: 현재 record 전체의 reverse complement를 새 record로 추가한다
 
-## 9. Undo/Redo
+## 9. 여러 feature를 한 번에 편집하기 (Batch)
+
+Feature Table 탭에서 여러 행을 **Ctrl/Shift-클릭**으로 다중 선택한 뒤 우클릭하면:
+
+- **Batch Edit Qualifiers...**: **Set**(기존 값을 덮어씀) / **Add**(기존 값 유지하고 추가, multi-value qualifier에 적합) / **Remove**(해당 qualifier 삭제, 원래 없던 feature는 건드리지 않음) 중 선택해 선택된 모든 feature에 한 번에 적용한다.
+- **Apply Template...**: 저장해 둔 annotation template(아래 참고)의 type과 qualifier를 선택된 모든 feature에 한 번에 적용한다. Template에서 비워둔 필드는 기존 값을 지우지 않는다.
+
+두 작업 모두 **Undo 한 번**으로 전체를 되돌릴 수 있다(여러 feature가 바뀌어도 하나의 실행 취소 단계로 처리됨).
+
+**Annotation template**은 `Add Annotation...` 대화상자에서도 사용할 수 있다: type과 gene/product/note/transl_table을 입력한 뒤 **Save as Template...**로 이름을 붙여 저장하면, 다음에 새 feature를 만들 때 **Template** 드롭다운에서 선택해 즉시 값을 채울 수 있다. 필요 없어지면 **Delete Template**로 지운다. Template은 project가 아니라 사용자 컴퓨터 전체에 저장되어 다른 project에서도 재사용된다.
+
+## 10. Undo/Redo
 
 **Edit > Undo / Redo** (Ctrl+Z 상당). feature 생성/수정/삭제가 대상이다. project를 닫으면 undo 기록은 초기화된다(단, project 파일 자체는 매 작업마다 즉시 저장되어 있으므로 데이터가 사라지지는 않는다).
 
-## 10. BLAST 설치 및 사용
+## 11. BLAST 설치 및 사용
 
 ### 9.1 BLAST 설치 확인
 
@@ -133,17 +144,17 @@ hit을 선택한 뒤 **Apply as Annotation...** 을 클릭한다. 대화상자�
 
 **OK**를 눌러야만 annotation이 만들어진다 — top hit이 자동으로 적용되는 일은 없다. 적용된 annotation은 사용한 BLAST 프로그램/버전/database/subject/identity/e-value가 함께 기록되며(Inspector의 Provenance), database를 나중에 삭제해도 이 근거 정보는 project에 남는다.
 
-## 11. Export
+## 12. Export
 
 - **File > Export GenBank...**: 내부적으로 임시 파일에 쓴 뒤 다시 읽어서 원본과 의미적으로 동일한지 검증하고, 문제가 없을 때만 최종 경로에 기록한다(원본 파일 덮어쓰기 없음).
 - **File > Export GFF3...**: 서열을 같은 파일에 포함(`##FASTA`)할지 별도 파일로 둘지 물어본다.
 - **File > Export Nucleotide FASTA...** / **Export Protein FASTA (protein records)...** / **Export Protein FASTA (CDS translations)...** / **Export FFN (CDS nucleotide)...** / **Export Feature Table CSV...**
 
-## 12. Project 동시 열기 / 비정상 종료
+## 13. Project 동시 열기 / 비정상 종료
 
 같은 project 파일을 다른 GenomeWorkbench 창(또는 이전에 비정상 종료된 세션)이 이미 열고 있으면, **Open Project**시 알림이 뜨고 **읽기 전용으로 열기** 또는 **강제로 편집 모드로 열기**(다른 인스턴스가 실제로 열려있지 않다고 확신할 때만) 중 선택할 수 있다.
 
-## 13. 문제 해결
+## 14. 문제 해결
 
 - **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\GenomeWorkbench\logs`의 로그 파일을 확인한다.
 - **`GenomeWorkbench.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\GenomeWorkbench\last_self_test_output.json`에 모두 기록된다.

@@ -8,9 +8,10 @@ stored internally is 0-based half-open.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from genome_workbench.application.commands import (
+    BatchCommand,
     FeatureCreateCommand,
     FeatureDeleteCommand,
     FeatureUpdateCommand,
@@ -28,6 +29,11 @@ from genome_workbench.domain.models import Feature, Provenance, SequenceRecord, 
 from genome_workbench.domain.qualifiers import QualifierSet
 from genome_workbench.domain.sequence_ops import TranslationResult, translate
 from genome_workbench.domain.validation import ValidationIssue, validate_feature
+from genome_workbench.infrastructure.filesystem.annotation_templates import AnnotationTemplate
+
+
+def _copy_feature_with(feature: Feature, **overrides: object) -> Feature:
+    return replace(feature, **overrides)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +198,90 @@ class AnnotationService:
             EventType.FEATURE_UPDATE, after.id, f"Updated {after.type} feature"
         )
         self._project_service.touch()
+
+    def batch_update_qualifier(
+        self,
+        features: list[Feature],
+        operation: str,
+        key: str,
+        value: str = "",
+    ) -> list[Feature]:
+        """Applies one qualifier operation to many features as a single undo
+        step. ``operation`` is "set" (replace all existing values for
+        ``key``), "add" (append ``value``, keeping any existing values --
+        multi-value qualifiers like /db_xref stay intact), or "remove"
+        (drop ``key`` entirely). Features where the operation is a no-op
+        (e.g. "remove" on a feature that never had that qualifier) are left
+        untouched and excluded from the returned list.
+        """
+        if operation not in ("set", "add", "remove"):
+            raise ValueError(f"unknown batch qualifier operation: {operation!r}")
+
+        pairs: list[tuple[Feature, Feature]] = []
+        for before in features:
+            qualifiers = before.qualifiers.copy()
+            if operation == "set":
+                qualifiers.set_all(key, [value])
+            elif operation == "add":
+                qualifiers.add(key, value)
+            elif operation == "remove":
+                if not qualifiers.has(key):
+                    continue
+                qualifiers.remove_key(key)
+            after = _copy_feature_with(before, qualifiers=qualifiers)
+            pairs.append((before, after))
+
+        return self._push_batch_update(
+            pairs, f"Batch {operation} qualifier '{key}' on {len(pairs)} feature(s)"
+        )
+
+    def apply_template_to_features(
+        self, features: list[Feature], template: AnnotationTemplate
+    ) -> list[Feature]:
+        """Applies an annotation template's type + common qualifiers to many
+        features at once, as a single undo step. Empty template fields are
+        left untouched on the target features (an empty "gene" in the
+        template doesn't erase an existing gene qualifier)."""
+        pairs: list[tuple[Feature, Feature]] = []
+        for before in features:
+            qualifiers = before.qualifiers.copy()
+            if template.gene:
+                qualifiers.set_all("gene", [template.gene])
+            if template.product:
+                qualifiers.set_all("product", [template.product])
+            if template.note:
+                qualifiers.set_all("note", [template.note])
+            if template.transl_table:
+                qualifiers.set_all("transl_table", [template.transl_table])
+            for extra_key, extra_value in template.extra_qualifiers:
+                qualifiers.set_all(extra_key, [extra_value])
+            after = _copy_feature_with(
+                before, type=template.feature_type or before.type, qualifiers=qualifiers
+            )
+            pairs.append((before, after))
+
+        return self._push_batch_update(
+            pairs, f"Apply template '{template.name}' to {len(pairs)} feature(s)"
+        )
+
+    def _push_batch_update(
+        self, pairs: list[tuple[Feature, Feature]], description: str
+    ) -> list[Feature]:
+        if not pairs:
+            return []
+        repo = self._project_service.require_writable()
+        commands: list[FeatureUpdateCommand] = []
+        updated: list[Feature] = []
+        for before, after in pairs:
+            after.modified_at = utc_now()
+            after.revision = before.revision + 1
+            commands.append(FeatureUpdateCommand(repo, before, after))
+            updated.append(after)
+        batch = BatchCommand(list(commands), description)
+        self._project_service.undo_stack.push(batch)
+        self._project_service.log_audit(EventType.FEATURE_UPDATE, "batch", description)
+        self._project_service.touch()
+        return updated
 
     def delete_feature(self, feature: Feature) -> None:
         repo = self._project_service.require_writable()

@@ -60,6 +60,24 @@ class FeatureDeleteCommand:
         self._repo.save_feature(self._feature)
 
 
+class BatchCommand:
+    """Groups several commands into one undo/redo step (e.g. a batch
+    qualifier edit applied to many features at once) -- Ctrl+Z undoes the
+    whole batch in one press, not one feature at a time."""
+
+    def __init__(self, commands: list[Command], description: str) -> None:
+        self._commands = commands
+        self.description = description
+
+    def do(self) -> None:
+        for command in self._commands:
+            command.do()
+
+    def undo(self) -> None:
+        for command in reversed(self._commands):
+            command.undo()
+
+
 class UndoStack:
     def __init__(self) -> None:
         self._undo_history: list[Command] = []

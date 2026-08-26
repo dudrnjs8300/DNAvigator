@@ -8,6 +8,8 @@ is computed from strand via AnnotationService (see docs/DECISIONS.md D-002).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -16,8 +18,10 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
@@ -32,6 +36,14 @@ from genome_workbench.application.annotation_service import AnnotationService
 from genome_workbench.domain.models import Feature, SequenceRecord
 from genome_workbench.domain.qualifiers import QualifierSet
 from genome_workbench.domain.validation import Severity
+from genome_workbench.infrastructure.filesystem.annotation_templates import (
+    AnnotationTemplate,
+    delete_template,
+    load_templates,
+    upsert_template,
+)
+
+_NO_TEMPLATE = "(no template)"
 
 _COMMON_FEATURE_TYPES = [
     "CDS",
@@ -53,10 +65,12 @@ class AddFeatureDialog(QDialog):
         parent=None,
         initial_start_1based: int | None = None,
         initial_end_1based: int | None = None,
+        templates_dir: Path | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Add Feature")
         self._record = record
+        self._templates_dir = templates_dir
         self._annotation_service = annotation_service
         self.created_feature: Feature | None = None
 
@@ -123,6 +137,18 @@ class AddFeatureDialog(QDialog):
         self._note_edit = QLineEdit()
         self._transl_table_edit = QLineEdit("11")
 
+        self._template_combo = QComboBox()
+        self._template_combo.currentIndexChanged.connect(self._on_template_selected)
+        save_template_button = QPushButton("Save as Template...")
+        delete_template_button = QPushButton("Delete Template")
+        save_template_button.clicked.connect(self._on_save_template)
+        delete_template_button.clicked.connect(self._on_delete_template)
+        template_row = QHBoxLayout()
+        template_row.addWidget(self._template_combo, stretch=1)
+        template_row.addWidget(save_template_button)
+        template_row.addWidget(delete_template_button)
+        self._reload_templates()
+
         self._preview_text = QPlainTextEdit()
         self._preview_text.setReadOnly(True)
         self._preview_text.setMaximumHeight(140)
@@ -134,6 +160,7 @@ class AddFeatureDialog(QDialog):
         form.addRow(self._join_checkbox)
         form.addRow(self._location_stack)
         form.addRow("Strand", self._strand_combo)
+        form.addRow("Template", template_row)
         form.addRow("Feature type", self._type_combo)
         form.addRow("gene", self._gene_edit)
         form.addRow("product", self._product_edit)
@@ -159,6 +186,55 @@ class AddFeatureDialog(QDialog):
     def _on_join_toggled(self, checked: bool) -> None:
         self._location_stack.setCurrentIndex(1 if checked else 0)
         self._update_preview()
+
+    def _reload_templates(self, select_name: str | None = None) -> None:
+        self._template_combo.blockSignals(True)
+        self._template_combo.clear()
+        self._template_combo.addItem(_NO_TEMPLATE)
+        self._template_combo.addItems([t.name for t in load_templates(self._templates_dir)])
+        if select_name is not None:
+            index = self._template_combo.findText(select_name)
+            if index >= 0:
+                self._template_combo.setCurrentIndex(index)
+        self._template_combo.blockSignals(False)
+
+    def _on_template_selected(self) -> None:
+        name = self._template_combo.currentText()
+        if name == _NO_TEMPLATE or not name:
+            return
+        template = next((t for t in load_templates(self._templates_dir) if t.name == name), None)
+        if template is None:
+            return
+        self._type_combo.setCurrentText(template.feature_type)
+        self._gene_edit.setText(template.gene)
+        self._product_edit.setText(template.product)
+        self._note_edit.setText(template.note)
+        self._transl_table_edit.setText(template.transl_table)
+        self._update_preview()
+
+    def _on_save_template(self) -> None:
+        name, ok = QInputDialog.getText(self, "Save as Template", "Template name:")
+        if not ok or not name.strip():
+            return
+        template = AnnotationTemplate(
+            name=name.strip(),
+            feature_type=self._type_combo.currentText(),
+            gene=self._gene_edit.text(),
+            product=self._product_edit.text(),
+            note=self._note_edit.text(),
+            transl_table=self._transl_table_edit.text(),
+        )
+        upsert_template(template, self._templates_dir)
+        self._reload_templates(select_name=template.name)
+
+    def _on_delete_template(self) -> None:
+        name = self._template_combo.currentText()
+        if name == _NO_TEMPLATE or not name:
+            return
+        answer = QMessageBox.question(self, "Delete Template", f'Delete template "{name}"?')
+        if answer == QMessageBox.StandardButton.Yes:
+            delete_template(name, self._templates_dir)
+            self._reload_templates()
 
     @staticmethod
     def _make_checkable_item(checked: bool) -> QTableWidgetItem:

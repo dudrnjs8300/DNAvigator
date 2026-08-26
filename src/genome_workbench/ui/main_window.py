@@ -39,10 +39,12 @@ from genome_workbench.domain.blast_models import (
 from genome_workbench.domain.events import EventType
 from genome_workbench.domain.locations import LocationPart
 from genome_workbench.domain.models import Feature, SequenceRecord, Topology
+from genome_workbench.infrastructure.filesystem.annotation_templates import load_templates
 from genome_workbench.infrastructure.filesystem.project_lock import ProjectLockedError
 from genome_workbench.ui.actions import make_action
 from genome_workbench.ui.dialogs.add_feature_dialog import AddFeatureDialog
 from genome_workbench.ui.dialogs.apply_blast_hit_dialog import ApplyBlastHitDialog
+from genome_workbench.ui.dialogs.batch_qualifier_dialog import BatchQualifierDialog
 from genome_workbench.ui.dialogs.blast_setup_dialog import BlastSetupDialog
 from genome_workbench.ui.dialogs.create_blast_database_dialog import CreateBlastDatabaseDialog
 from genome_workbench.ui.dialogs.find_feature_dialog import FindFeatureDialog
@@ -59,7 +61,9 @@ logger = logging.getLogger("genome_workbench.ui")
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, blast_work_dir: Path | None = None) -> None:
+    def __init__(
+        self, blast_work_dir: Path | None = None, templates_dir: Path | None = None
+    ) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.resize(1400, 900)
@@ -70,6 +74,7 @@ class MainWindow(QMainWindow):
         self.annotation_service = AnnotationService(self.project_service)
         self.blast_service = BlastService(self.project_service, work_dir=blast_work_dir)
         self.sequence_ops_service = SequenceOperationsService()
+        self._templates_dir = templates_dir
 
         self._current_record: SequenceRecord | None = None
         self._current_feature: Feature | None = None
@@ -150,6 +155,10 @@ class MainWindow(QMainWindow):
 
         self.feature_table = FeatureTableView(self)
         self.feature_table.featureSelected.connect(self._on_feature_selected_from_view)
+        self.feature_table.batchEditQualifiersRequested.connect(
+            self._on_batch_edit_qualifiers_requested
+        )
+        self.feature_table.applyTemplateRequested.connect(self._on_apply_template_requested)
         self._tabs.addTab(self.feature_table, "Feature Table")
 
         self.setCentralWidget(self._tabs)
@@ -636,6 +645,7 @@ class MainWindow(QMainWindow):
             self,
             initial_start_1based=initial_start,
             initial_end_1based=initial_end,
+            templates_dir=self._templates_dir,
         )
         if dialog.exec():
             self._refresh_features_only()
@@ -770,6 +780,48 @@ class MainWindow(QMainWindow):
             self.inspector_dock.show_feature(after, self._current_record)
         self._log(f"Updated feature: {after.computed_label()}")
 
+    def _on_batch_edit_qualifiers_requested(self, feature_ids: list) -> None:
+        if not self._guard_project_open():
+            return
+        features = [f for f in (self._find_current_feature(fid) for fid in feature_ids) if f]
+        if not features:
+            return
+        dialog = BatchQualifierDialog(len(features), self)
+        if not dialog.exec():
+            return
+        key = dialog.key()
+        if not key:
+            return
+        updated = self.annotation_service.batch_update_qualifier(
+            features, dialog.operation(), key, dialog.value()
+        )
+        self._refresh_features_only()
+        self._log(f"Batch {dialog.operation()} qualifier '{key}' on {len(updated)} feature(s)")
+
+    def _on_apply_template_requested(self, feature_ids: list) -> None:
+        if not self._guard_project_open():
+            return
+        features = [f for f in (self._find_current_feature(fid) for fid in feature_ids) if f]
+        if not features:
+            return
+        templates = load_templates(self._templates_dir)
+        if not templates:
+            QMessageBox.information(
+                self,
+                "Apply Template",
+                "No saved templates yet -- save one from the Add Feature dialog first.",
+            )
+            return
+        name, ok = QInputDialog.getItem(
+            self, "Apply Template", "Template:", [t.name for t in templates], editable=False
+        )
+        if not ok:
+            return
+        template = next(t for t in templates if t.name == name)
+        updated = self.annotation_service.apply_template_to_features(features, template)
+        self._refresh_features_only()
+        self._log(f"Applied template '{template.name}' to {len(updated)} feature(s)")
+
     def _on_feature_boundary_edit_requested(
         self, feature_id: str, new_start0: int, new_end0: int
     ) -> None:
@@ -861,6 +913,7 @@ class MainWindow(QMainWindow):
                 self,
                 initial_start_1based=start0 + 1,
                 initial_end_1based=end0,
+                templates_dir=self._templates_dir,
             )
             if dialog.exec():
                 self._refresh_features_only()
