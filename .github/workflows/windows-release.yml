@@ -61,9 +61,72 @@ jobs:
         run: |
           Compress-Archive -Path dist\GenomeWorkbench\* -DestinationPath GenomeWorkbench-portable-win-x64.zip
 
+      - name: Build installer (Inno Setup)
+        run: |
+          $candidate = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc -and (Test-Path $candidate)) { $iscc = $candidate }
+          if (-not $iscc) {
+            Write-Host "Inno Setup not found on this runner -- installing via choco"
+            choco install innosetup -y --no-progress | Out-Null
+            $iscc = $candidate
+          }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found after install attempt" }
+          Write-Host "Using Inno Setup compiler: $iscc"
+
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          & $iscc installer\genome_workbench.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed (exit $LASTEXITCODE)" }
+
+          $setup = Get-ChildItem release\GenomeWorkbench-*-win-x64-setup.exe | Select-Object -First 1
+          if (-not $setup) { throw "Inno Setup did not produce a setup .exe under release\" }
+          Write-Host "Built installer: $($setup.FullName)"
+
+      - name: Installer silent install / self-test / uninstall (clean runner)
+        run: |
+          $setup = Get-ChildItem release\GenomeWorkbench-*-win-x64-setup.exe | Select-Object -First 1
+          $installDir = Join-Path $env:LOCALAPPDATA "Programs\GenomeWorkbench"
+
+          Write-Host "==> silent install"
+          $pInstall = Start-Process -FilePath $setup.FullName `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LANG=english" `
+            -PassThru -Wait
+          Write-Host "installer exit code: $($pInstall.ExitCode)"
+          if ($pInstall.ExitCode -ne 0) { throw "silent install failed (exit $($pInstall.ExitCode))" }
+
+          $installedExe = Join-Path $installDir "GenomeWorkbench.exe"
+          if (-not (Test-Path $installedExe)) { throw "installed exe not found at $installedExe" }
+          Write-Host "Installed to: $installedExe (no admin prompt -- PrivilegesRequired=lowest)"
+
+          Write-Host "==> installed --self-test"
+          $pSelfTest = Start-Process -FilePath $installedExe -ArgumentList "--self-test" -NoNewWindow -PassThru -Wait `
+            -RedirectStandardOutput installer_selftest_stdout.txt -RedirectStandardError installer_selftest_stderr.txt
+          Write-Host "self-test exit code: $($pSelfTest.ExitCode)"
+          Get-Content installer_selftest_stdout.txt -ErrorAction SilentlyContinue
+          if ($pSelfTest.ExitCode -ne 0) { throw "installed self-test failed (exit $($pSelfTest.ExitCode))" }
+
+          Write-Host "==> Start Menu shortcut check"
+          $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\GenomeWorkbench.lnk"
+          if (-not (Test-Path $shortcut)) { throw "Start Menu shortcut not found at $shortcut" }
+
+          Write-Host "==> silent uninstall"
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          $pUninstall = Start-Process -FilePath $uninstaller `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
+            -PassThru -Wait
+          Write-Host "uninstaller exit code: $($pUninstall.ExitCode)"
+          if ($pUninstall.ExitCode -ne 0) { throw "silent uninstall failed (exit $($pUninstall.ExitCode))" }
+          if (Test-Path $installedExe) { throw "install directory still present after uninstall" }
+          Write-Host "Uninstall removed the install directory cleanly."
+
       - uses: actions/upload-artifact@v4
         with:
           name: GenomeWorkbench-windows-x64
           path: |
             GenomeWorkbench-portable-win-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GenomeWorkbench-installer
+          path: release\GenomeWorkbench-*-win-x64-setup.exe
 
