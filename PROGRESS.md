@@ -2,14 +2,25 @@
 
 이 문서는 milestone 체크리스트와 각 phase의 gate 통과 여부, 다음 session이 이어갈 정확한 지점을 기록한다. 새 session은 `docs/PRODUCT_SPEC.md`, 이 문서, `git log`, 실패 테스트를 먼저 읽고 이어간다.
 
-## 현재 상태 요약 (2026-08-26, 4차 업데이트)
+## 현재 상태 요약 (2026-08-26, 5차/최종 업데이트)
 
-- Phase 0, 1, 2, 3(시각화), 4(annotation editor), 5/6(BLAST 핵심) 완료. Phase 7(export 완성) 대부분 완료. 남은 것은 Phase 8(Windows installer/문서/실제 GitHub Actions 검증)뿐.
-- 전체 테스트: **178 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`).
+- Phase 0, 1, 2, 3(시각화), 4(annotation editor), 5/6(BLAST 핵심), 7(export 완성) 완료. Phase 8도 문서/portable ZIP/최종 검증까지 완료 — installer 컴파일과 실제 GitHub Actions 실행, 실제 BLAST+ 바이너리 재검증만 이 세션에서 하지 못했다(아래 "Phase 8" 절과 `docs/RELEASE_TEST_REPORT.md` 참고).
+- 전체 테스트: **183 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`).
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench` 모두 clean.
+- Portable ZIP 빌드/검증 완료: `release/GenomeWorkbench-0.1.0-win-x64-portable.zip` (+ `.sha256`), 별도 임시 경로 및 한글/공백 경로로 압축 해제 후 `--self-test` exit 0 확인.
 - 개발 환경 Python은 3.14.6 (3.12 미설치, D-001 참고). `requires-python`은 `>=3.12` 유지.
 
-## Phase 7 — export 완성, sequence operations (거의 완료, 2026-08-26)
+## Phase 8 — Windows release와 문서 (거의 완료, 2026-08-26)
+
+- [x] `docs/USER_GUIDE_KO.md`, `docs/BLAST_SETUP.md` — 실제 구현된 화면/메뉴만 기준으로 작성.
+- [x] `docs/RELEASE_TEST_REPORT.md` — AT-01~AT-10 결과를 정직하게 기록(통과/부분통과/미검증을 명확히 구분).
+- [x] `release/` 산출물: portable ZIP + SHA-256 checksum + THIRD_PARTY_NOTICES.md + RELEASE_NOTES.md. 압축 해제 후 격리된 경로(및 한글/공백 경로)에서 `--self-test` 재검증함.
+- [x] `installer/genome_workbench.iss` (Inno Setup 스크립트) 작성 — **컴파일하지 못함** (이 환경에 Inno Setup Compiler 없음). 실제 설치본을 만들려면 `iscc installer\genome_workbench.iss` 실행 필요.
+- [ ] 실제 GitHub Actions에서 `.github/workflows/*.yml` 실행 검증 — 원격 저장소 push 및 사용자 승인 필요, 이 세션에서는 로컬 수동 실행으로만 동일 절차를 확인함.
+- [ ] 실제 NCBI BLAST+ 바이너리로 BLAST 파이프라인 재검증 — 이 환경에 BLAST+ 미설치.
+- [ ] Clean Windows VM에서의 installer 설치/실행/제거 검증 — 미실시.
+
+## Phase 7 — export 완성, sequence operations (완료, 2026-08-26)
 
 - [x] `infrastructure/formats/export_formats.py`: nucleotide FASTA, protein FASTA(record 직접 export / CDS translation export 두 가지), FFN(CDS 생물학적 서열), feature table CSV — 전부 `ExportService`를 통해 atomic write로 노출되고 File 메뉴에 연결됨.
 - [x] `SequenceOperationsService.extract_as_new_record`/`reverse_complement_as_new_record` (spec 10.1 non-destructive operations) — canvas 우클릭 메뉴의 "Extract Selection as New Record.../Reverse Complement Whole Record as New Record..."로 연결, 새 record는 project에 저장되지만 원본은 변경되지 않음.
@@ -97,9 +108,15 @@
 - [ ] BLAST DB의 project 귀속/삭제 시 정리, 여러 query(batch BLAST) 미지원
 - [ ] GC content/skew track, feature drag로 여러 구간 join 편집
 
-## Phase 4/5/6/7/8 — 나머지
+## 다음 session이 있다면 시작할 지점
 
-Phase 5/6(BLAST 핵심)는 이미 완료됨(위 "Phase 3/BLAST 조기 구현" 절 참고). 남은 항목은 `docs/PRODUCT_SPEC.md` 17장 원문 참고. 각 phase 착수 시 이 파일에 체크리스트를 추가할 것.
+P0 핵심 기능은 전부 구현·테스트되었다. 남은 것은 순수하게 "이 sandbox 환경에서 할 수 없었던 것들"이다:
+
+1. Inno Setup 6 설치 후 `iscc installer\genome_workbench.iss` 실행 → 클린 VM에서 설치/실행/제거 검증 (spec AT-10).
+2. 실제 NCBI BLAST+ 설치 후 `docs/BLAST_SETUP.md` 절차 재현 → `docs/RELEASE_TEST_REPORT.md`의 AT-06/AT-07을 mock이 아닌 실제 바이너리로 재검증.
+3. BLAST job 취소(cancel) UI 추가 (`ui/workers/callable_worker.py`에 cancel 메서드 추가 + `BlastPanel`에 버튼) — spec AT-08.
+4. 원격 저장소에 push하고 실제 GitHub Actions에서 `.github/workflows/*.yml` 실행 확인 (사용자 승인 필요).
+5. blastp(protein) 경로 전용 e2e UI 테스트 추가.
 
 ## 알려진 리스크 / 재검증 필요 항목
 

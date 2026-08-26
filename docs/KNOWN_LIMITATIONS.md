@@ -26,6 +26,8 @@
 - **`--self-test`의 `blast_executable` 항목은 여전히 `optional_tool_unavailable`로 분류됨** — BLAST+ 미설치가 core self-test 실패를 유발하지 않는다.
 - **Tool Setup Wizard의 공식 배포판 자동 다운로드 경로 없음** (Phase 5). 현재 `BlastSetupDialog`는 기존 설치 탐지와 수동 디렉터리 지정만 지원한다.
 - **번역 검색(blastx/tblastn)의 frame 기반 좌표 매핑이 근사적임.** `map_hsp_to_genome_location`은 blastn(뉴클레오타이드 대 뉴클레오타이드) 기준으로 검증되었고, 단위 테스트 4건(정방향/역방향 query × subject strand 조합)을 통과했다. blastx/tblastn의 세부 frame 처리는 Phase 6에서 추가 검증 필요.
+- **실행 중인 BLAST job을 취소하는 UI가 없음(AT-08).** 실패 처리(잘못된 DB 경로 등)는 안전하게 QMessageBox로 보고되지만, `CallableWorker`에는 cancel 메서드/버튼이 연결되어 있지 않다. Phase 6 나머지 범위.
+- **blastp(protein 대 protein) 경로의 전용 e2e 테스트가 없음.** `suggest_program()`이 protein-vs-protein일 때 blastp를 올바르게 제안하는 것은 단위 테스트로 확인되었지만, 실행→적용까지 이어지는 UI 테스트는 blastn 경로만 있다. `docs/RELEASE_TEST_REPORT.md` AT-07 참고.
 
 - **별도의 주기적 autosave/snapshot이 없다 — 대신 모든 mutation이 즉시 SQLite에 commit된다.** `application/commands.py`의 각 Command는 실행 즉시 `repo.save_*()`를 호출해 커밋하므로, "저장 안 된 편집 내용"이라는 개념 자체가 없다(잃어버릴 미저장 상태가 없음). `Save`(Ctrl+S)는 `modified_at` timestamp만 갱신하는 사실상 의례적인 동작이다. 이는 spec 12.3이 요구하는 것과 메커니즘은 다르지만(주기적 snapshot이 아니라 즉시 commit) 데이터 손실 방지라는 목표는 동등하게(사실 더 강하게) 충족한다.
 - **Project lock(동시 열기 감지)과 비정상 종료 감지는 구현됨.** `infrastructure/filesystem/project_lock.py` + `ProjectService`: 두 번째 instance가 같은 project를 열려고 하면 읽기 전용으로 열거나 강제로 편집 모드로 열 수 있는 선택지를 제공한다(spec 12.3). 이전 세션이 비정상 종료되어 lock file이 남아있으면 다음 open 시 동일한 경고가 뜬다(spec 12.4의 "비정상 종료 marker" 요구사항에 상응). 다만 "Recover as Copy" UI(스냅샷 목록에서 선택)는 없다 — 애초에 잃어버릴 미저장 스냅샷이 없으므로 필요성이 낮다고 판단했다.

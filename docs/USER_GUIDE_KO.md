@@ -1,0 +1,133 @@
+# GenomeWorkbench 사용자 매뉴얼 (한국어)
+
+버전: 0.1.0 (2026-08-26 기준). 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
+
+## 1. 설치
+
+### Portable (권장, 검증됨)
+
+1. `GenomeWorkbench-0.1.0-win-x64-portable.zip`을 원하는 위치에 압축 해제한다. 한글이나 공백이 포함된 경로도 문제없다.
+2. 압축 해제된 폴더 안의 `GenomeWorkbench.exe`를 실행한다.
+3. 관리자 권한이 필요 없다. 별도의 Python 설치도 필요 없다.
+
+### Installer
+
+이 버전에는 컴파일된 installer(.exe)가 포함되지 않는다(빌드 환경에 Inno Setup이 없었음). `release/RELEASE_NOTES.md` 참고. Installer가 필요하면 `installer/genome_workbench.iss`를 Inno Setup 6으로 직접 빌드한다.
+
+### 첫 실행 시 확인 사항
+
+Windows Defender/SmartScreen이 서명되지 않은 실행파일이라는 경고를 표시할 수 있다(코드 서명 인증서가 없음). "추가 정보" → "실행"으로 진행하면 된다.
+
+## 2. 첫 project 만들기
+
+1. **File > New Project...** 를 선택한다.
+2. 저장할 위치와 파일 이름(`*.gwbproj`)을 지정한다.
+3. project 이름을 입력한다.
+
+project를 열면 왼쪽 **Project Explorer**, 가운데 **Genome Map / Circular Map / Feature Table** 탭, 오른쪽 **Inspector**, 하단 **Jobs & Log / BLAST** 패널이 나타난다.
+
+## 3. 파일 열기 (Import)
+
+- **File > Import FASTA...**: `.fasta`, `.fa`, `.fna`, `.faa` 등(gzip 포함)을 연다. 여러 record가 있으면 모두 Project Explorer에 나타난다.
+- **File > Import GenBank...**: `.gb`, `.gbk`, `.gbff` 등을 연다. 기존 annotation(gene, CDS, tRNA 등)이 함께 들어온다.
+- **File > Import GFF3...**: `.gff3`를 연다. GFF3 파일에 `##FASTA` 구간이 없으면(annotation-only) 대응하는 서열 FASTA 파일을 선택하라는 창이 뜬다.
+
+가져온 뒤 첫 record가 자동으로 선택되어 Genome Map에 표시된다.
+
+## 4. Genome Map 조작 (마우스만으로)
+
+- **마우스 휠**: 확대/축소. 커서 위치를 기준으로 확대된다.
+- **Shift + 휠**: 좌우 이동(pan).
+- **좌클릭 + 드래그**: 빈 공간에서 드래그하면 구간을 선택한다(하늘색으로 강조 표시).
+- **feature 클릭**: 해당 feature가 선택되고, 오른쪽 Inspector와 Feature Table, Circular Map에 동시에 반영된다.
+- **feature 더블클릭**: 해당 feature 범위로 확대한다.
+- **feature 경계 근처 드래그**: 선택된 단일 구간 feature의 시작/끝 좌표를 조정한다(compound feature는 지원하지 않으며 안내 메시지가 뜬다).
+- 상단 툴바: **Zoom In / Zoom Out / Fit Genome / Zoom to Selection** 버튼.
+- 하단 **minimap**: 클릭하거나 드래그하면 그 위치로 이동한다.
+
+확대 수준에 따라 자동으로:
+- 전체 genome: 밀도 그래프
+- 중간 확대: 색상 strand 화살표(+가 오른쪽, -가 왼쪽) + label
+- 세부 확대: 염기 문자(윗줄: 정방향, 아랫줄: 상보가닥), CDS라면 그 위에 번역된 amino acid도 표시
+
+**Circular Map** 탭에서는 원형 지도로 볼 수 있다(원형 topology record에 특히 유용). Project Explorer에서 record를 우클릭하면 **Set Circular / Set Linear**로 topology를 바꿀 수 있다.
+
+## 5. 수동 annotation 만들기
+
+1. Genome Map에서 원하는 구간을 마우스로 드래그해 선택한다.
+2. 선택 영역에서 **우클릭 → Add Annotation...** 을 선택한다(또는 **Annotation > Add Feature...** 메뉴, 이 경우 좌표를 직접 입력).
+3. 대화상자에서:
+   - **Start/End**: 드래그한 좌표가 이미 채워져 있다(1-based).
+   - **Strand**: +/-
+   - **Feature type**: CDS, gene, tRNA 등(직접 입력도 가능)
+   - **Multiple segments (join)** 체크박스: 체크하면 여러 구간을 입력해 하나의 compound(join) feature를 만들 수 있다(intron이 있는 유전자 등). 구간을 어떤 순서로 입력해도 strand에 맞는 생물학적 순서로 자동 정렬된다.
+   - gene/product/note/transl_table 입력
+   - **Preview** 버튼으로 길이, translation, 시작/종료 코돈, 내부 stop codon 여부를 미리 확인한다.
+4. **OK**를 누르면 즉시 저장된다(별도의 "Save" 없이도 project 파일에 즉시 기록된다).
+
+## 6. 기존 annotation 확인/수정
+
+1. Genome Map, Circular Map, Feature Table 중 어디서든 feature를 클릭한다.
+2. 오른쪽 **Inspector**에 type, strand, 좌표, 공통 qualifier(gene/locus_tag/product/note/db_xref/inference), 추출된 nucleotide/translation, validation 경고, provenance가 표시된다.
+3. 값을 직접 수정한다. 공통 6개 필드 외의 qualifier는 **All other qualifiers** 표에서 **Add Qualifier / Remove Selected**로 자유롭게 추가·삭제한다(multi-value 가능).
+4. **Apply**를 누르면 저장되고, **Revert**를 누르면 마지막 저장 상태로 되돌린다.
+
+## 7. 선택 영역으로 할 수 있는 것 (우클릭 메뉴)
+
+Genome Map에서 구간을 드래그 선택한 뒤 우클릭하면:
+
+- **Add Annotation...**: 위 5번 참고
+- **Run BLAST...**: 아래 9번 참고
+- **Copy Sequence / Copy Reverse Complement**: 클립보드로 복사
+- **Translate (+ strand) / Translate (- strand)**: 번역 결과를 바로 보여준다
+- **Export Selection as FASTA...**: 선택 구간만 FASTA로 저장
+- **Extract Selection as New Record...**: 선택 구간을 새 record로 project에 추가한다(원본은 바뀌지 않음)
+- **Reverse Complement Whole Record as New Record...**: 현재 record 전체의 reverse complement를 새 record로 추가한다
+
+## 8. Undo/Redo
+
+**Edit > Undo / Redo** (Ctrl+Z 상당). feature 생성/수정/삭제가 대상이다. project를 닫으면 undo 기록은 초기화된다(단, project 파일 자체는 매 작업마다 즉시 저장되어 있으므로 데이터가 사라지지는 않는다).
+
+## 9. BLAST 설치 및 사용
+
+### 9.1 BLAST 설치 확인
+
+**BLAST > BLAST Setup...** 을 클릭한다. 자동으로 PATH와 일반적인 설치 위치에서 `makeblastdb`, `blastdbcmd`, `blastn`, `blastp`, `blastx`, `tblastn`을 찾는다. 없으면 "BLAST+ bin directory"에 직접 경로를 입력하고 **Detect**를 누른다.
+
+이 프로그램은 BLAST+ 실행파일을 포함하지 않는다. 공식 배포처(https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)에서 내려받아 설치한 뒤 경로를 등록한다. 자세한 내용은 `docs/BLAST_SETUP.md` 참고.
+
+### 9.2 Custom database 만들기
+
+하단 **BLAST** 패널에서 **Create Database...** 를 클릭하고 source FASTA(nucleotide 또는 protein), 이름을 지정한다. ID에 문제가 있는 문자(`|` 등)가 있으면 자동으로 안전한 ID로 변환하고 원래 ID와의 매핑을 기록한다.
+
+### 9.3 BLAST 실행
+
+1. Genome Map에서 구간을 선택하고 우클릭 → **Run BLAST...**
+2. 하단 BLAST 패널에서 database, program(자동 제안됨), e-value, max target sequences 등을 확인/조정하고 **Run BLAST** 클릭.
+3. 결과 표에서 hit을 클릭하면 오른쪽에 HSP alignment(identity, coverage, e-value, bit score, aligned sequence)가 나타난다.
+
+### 9.4 BLAST 근거로 annotation 적용
+
+hit을 선택한 뒤 **Apply as Annotation...** 을 클릭한다. 대화상자에서:
+- 매핑된 genome 좌표와 strand를 확인한다(자동 계산됨)
+- feature type을 선택한다
+- 어떤 정보를 복사할지 선택한다: product(subject title에서), note(BLAST 근거 요약, 기본 선택됨), db_xref(subject ID). **product는 기본적으로 선택되어 있지 않다** — plain FASTA title을 무비판적으로 product로 확정하지 않기 위함이다.
+
+**OK**를 눌러야만 annotation이 만들어진다 — top hit이 자동으로 적용되는 일은 없다. 적용된 annotation은 사용한 BLAST 프로그램/버전/database/subject/identity/e-value가 함께 기록되며(Inspector의 Provenance), database를 나중에 삭제해도 이 근거 정보는 project에 남는다.
+
+## 10. Export
+
+- **File > Export GenBank...**: 내부적으로 임시 파일에 쓴 뒤 다시 읽어서 원본과 의미적으로 동일한지 검증하고, 문제가 없을 때만 최종 경로에 기록한다(원본 파일 덮어쓰기 없음).
+- **File > Export GFF3...**: 서열을 같은 파일에 포함(`##FASTA`)할지 별도 파일로 둘지 물어본다.
+- **File > Export Nucleotide FASTA...** / **Export Protein FASTA (protein records)...** / **Export Protein FASTA (CDS translations)...** / **Export FFN (CDS nucleotide)...** / **Export Feature Table CSV...**
+
+## 11. Project 동시 열기 / 비정상 종료
+
+같은 project 파일을 다른 GenomeWorkbench 창(또는 이전에 비정상 종료된 세션)이 이미 열고 있으면, **Open Project**시 알림이 뜨고 **읽기 전용으로 열기** 또는 **강제로 편집 모드로 열기**(다른 인스턴스가 실제로 열려있지 않다고 확신할 때만) 중 선택할 수 있다.
+
+## 12. 문제 해결
+
+- **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\GenomeWorkbench\logs`의 로그 파일을 확인한다.
+- **`GenomeWorkbench.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\GenomeWorkbench\last_self_test_output.json`에 모두 기록된다.
+- **`GenomeWorkbench.exe --diagnostics`**: 버전, OS, Python/Qt/Biopython 버전 등을 JSON으로 출력한다.
+- BLAST 관련 오류는 `docs/BLAST_SETUP.md`의 "일반 오류와 해결" 참고.
