@@ -36,11 +36,26 @@ jobs:
 
       - name: Packaging smoke test (clean runner)
         run: |
-          .\dist\GenomeWorkbench\GenomeWorkbench.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "self-test failed on packaged build" }
+          $exe = ".\dist\GenomeWorkbench\GenomeWorkbench.exe"
+
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -NoNewWindow -PassThru -Wait `
+            -RedirectStandardOutput selftest_stdout.txt -RedirectStandardError selftest_stderr.txt
+          Write-Host "self-test exit code: $($p.ExitCode)"
+          Write-Host "--- stdout ---"; Get-Content selftest_stdout.txt -ErrorAction SilentlyContinue
+          Write-Host "--- stderr ---"; Get-Content selftest_stderr.txt -ErrorAction SilentlyContinue
+          $jsonPath = "$env:LOCALAPPDATA\GenomeWorkbench\last_self_test_output.json"
+          if (Test-Path $jsonPath) { Write-Host "--- last_self_test_output.json ---"; Get-Content $jsonPath }
+          if ($p.ExitCode -ne 0) { throw "self-test failed on packaged build (exit $($p.ExitCode))" }
+
           New-Item -ItemType Directory -Force -Path smoke_out | Out-Null
-          .\dist\GenomeWorkbench\GenomeWorkbench.exe --smoke-test tests\fixtures smoke_out
-          if ($LASTEXITCODE -ne 0) { throw "smoke-test failed on packaged build" }
+          $p2 = Start-Process -FilePath $exe -ArgumentList "--smoke-test", "tests\fixtures", "smoke_out" -NoNewWindow -PassThru -Wait `
+            -RedirectStandardOutput smoketest_stdout.txt -RedirectStandardError smoketest_stderr.txt
+          Write-Host "smoke-test exit code: $($p2.ExitCode)"
+          Write-Host "--- stdout ---"; Get-Content smoketest_stdout.txt -ErrorAction SilentlyContinue
+          Write-Host "--- stderr ---"; Get-Content smoketest_stderr.txt -ErrorAction SilentlyContinue
+          $jsonPath2 = "$env:LOCALAPPDATA\GenomeWorkbench\last_smoke_test_output.json"
+          if (Test-Path $jsonPath2) { Write-Host "--- last_smoke_test_output.json ---"; Get-Content $jsonPath2 }
+          if ($p2.ExitCode -ne 0) { throw "smoke-test failed on packaged build (exit $($p2.ExitCode))" }
 
       - name: Package portable ZIP
         run: |
