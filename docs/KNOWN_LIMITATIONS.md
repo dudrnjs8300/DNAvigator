@@ -45,7 +45,7 @@
 
 ## 패키징 / 배포
 
-- **Installer(Inno Setup)는 컴파일되었고 이 개발 머신에서 silent 설치 → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 검증되었다** (관리자 권한 없이 `%LOCALAPPDATA%\Programs\GenomeWorkbench`에 설치됨, `PrivilegesRequired=lowest` 의도대로 동작). **다만 완전히 별도의 clean Windows 사용자 계정/VM에서의 검증은 아직 하지 못했다** — AT-10 참고. File association(`.gwbproj`)은 스크립트에 구현되어 있으나 GUI 없이 자동으로 검증하기 어려워 수동 확인은 하지 못했다. Code signing 인증서는 없다(Windows Defender/SmartScreen 경고 가능).
+- **Installer(Inno Setup)는 이 개발 머신뿐 아니라 GitHub Actions의 clean `windows-latest` 러너에서도 자동으로 검증된다.** `windows-release.yml`이 매 실행마다 Inno Setup으로 컴파일 → silent 설치(관리자 권한 없이 `%LOCALAPPDATA%\Programs\GenomeWorkbench`에 설치, `PrivilegesRequired=lowest` 의도대로 동작) → 설치된 위치에서 `--self-test` → Start Menu 바로가기 확인 → silent 제거까지 수행하고, `GenomeWorkbench-installer` artifact로 setup.exe를 업로드한다. 실제로 한 번 실행해 성공을 확인했다(windows-release #3, 4분 58초, 42.1MB). 이로써 "완전히 별도의 clean 환경에서의 installer 검증"이라는 AT-10 요구 사항의 대부분이 자동화되었다 — 남은 것은 File association(`.gwbproj`) 자체의 GUI 수동 확인뿐이다. Code signing 인증서는 없다(Windows Defender/SmartScreen 경고 가능, README에 안내 추가함).
 - **`AttachConsole` 기반 CLI 출력 경로가 실제 대화형 터미널/CI에서 미검증** — `docs/DECISIONS.md` D-005 참고. 대신 모든 CLI 명령 결과를 `%LOCALAPPDATA%/GenomeWorkbench/last_*_output.json`에 항상 기록하도록 했다.
 - **한국어 사용자 매뉴얼(`USER_GUIDE_KO.md`), `BLAST_SETUP.md`, 완전한 `FORMAT_SUPPORT.md` compatibility matrix 아직 없음** (Phase 8, 일부는 Phase 2에서 시작).
 
