@@ -50,9 +50,13 @@ project를 열면 왼쪽 **Project Explorer**, 가운데 **Genome Map / Circular
 - 중간 확대: 색상 strand 화살표(+가 오른쪽, -가 왼쪽) + label
 - 세부 확대: 염기 문자(윗줄: 정방향, 아랫줄: 상보가닥), CDS라면 그 위에 번역된 amino acid도 표시
 
-**Circular Map** 탭에서는 원형 지도로 볼 수 있다(원형 topology record에 특히 유용). Project Explorer에서 record를 우클릭하면 **Set Circular / Set Linear**로 topology를 바꿀 수 있다.
+**Circular Map** 탭은 현재 record의 topology가 실제로 **circular**일 때만 활성화되고, circular record를 선택하면 자동으로 그 탭이 기본으로 열린다(선형 지도는 언제든 탭을 눌러 볼 수 있다). linear record에서는 원형으로 표시할 근거(원점)가 없으므로 이 탭 자체가 비활성화된다. Project Explorer에서 record를 우클릭하면 **Set Circular / Set Linear**로 topology를 바꿀 수 있다.
 
-## 5. 수동 annotation 만들기
+## 5. 유전자/qualifier로 찾기 (Find)
+
+**Edit > Find Feature...** (Ctrl+F)로 검색 창을 연다. project 안의 모든 record를 대상으로 gene, locus_tag, product, note를 비롯한 모든 qualifier 값을 부분 일치로 검색한다. 결과 목록에서 항목을 더블클릭하거나 Enter를 누르면 해당 record로 전환되고 Genome Map이 그 feature로 확대되며 Inspector에도 선택된다.
+
+## 6. 수동 annotation 만들기
 
 1. Genome Map에서 원하는 구간을 마우스로 드래그해 선택한다.
 2. 선택 영역에서 **우클릭 → Add Annotation...** 을 선택한다(또는 **Annotation > Add Feature...** 메뉴, 이 경우 좌표를 직접 입력).
@@ -65,14 +69,14 @@ project를 열면 왼쪽 **Project Explorer**, 가운데 **Genome Map / Circular
    - **Preview** 버튼으로 길이, translation, 시작/종료 코돈, 내부 stop codon 여부를 미리 확인한다.
 4. **OK**를 누르면 즉시 저장된다(별도의 "Save" 없이도 project 파일에 즉시 기록된다).
 
-## 6. 기존 annotation 확인/수정
+## 7. 기존 annotation 확인/수정
 
 1. Genome Map, Circular Map, Feature Table 중 어디서든 feature를 클릭한다.
 2. 오른쪽 **Inspector**에 type, strand, 좌표, 공통 qualifier(gene/locus_tag/product/note/db_xref/inference), 추출된 nucleotide/translation, validation 경고, provenance가 표시된다.
 3. 값을 직접 수정한다. 공통 6개 필드 외의 qualifier는 **All other qualifiers** 표에서 **Add Qualifier / Remove Selected**로 자유롭게 추가·삭제한다(multi-value 가능).
 4. **Apply**를 누르면 저장되고, **Revert**를 누르면 마지막 저장 상태로 되돌린다.
 
-## 7. 선택 영역으로 할 수 있는 것 (우클릭 메뉴)
+## 8. 선택 영역으로 할 수 있는 것 (우클릭 메뉴)
 
 Genome Map에서 구간을 드래그 선택한 뒤 우클릭하면:
 
@@ -84,11 +88,11 @@ Genome Map에서 구간을 드래그 선택한 뒤 우클릭하면:
 - **Extract Selection as New Record...**: 선택 구간을 새 record로 project에 추가한다(원본은 바뀌지 않음)
 - **Reverse Complement Whole Record as New Record...**: 현재 record 전체의 reverse complement를 새 record로 추가한다
 
-## 8. Undo/Redo
+## 9. Undo/Redo
 
 **Edit > Undo / Redo** (Ctrl+Z 상당). feature 생성/수정/삭제가 대상이다. project를 닫으면 undo 기록은 초기화된다(단, project 파일 자체는 매 작업마다 즉시 저장되어 있으므로 데이터가 사라지지는 않는다).
 
-## 9. BLAST 설치 및 사용
+## 10. BLAST 설치 및 사용
 
 ### 9.1 BLAST 설치 확인
 
@@ -115,17 +119,17 @@ hit을 선택한 뒤 **Apply as Annotation...** 을 클릭한다. 대화상자�
 
 **OK**를 눌러야만 annotation이 만들어진다 — top hit이 자동으로 적용되는 일은 없다. 적용된 annotation은 사용한 BLAST 프로그램/버전/database/subject/identity/e-value가 함께 기록되며(Inspector의 Provenance), database를 나중에 삭제해도 이 근거 정보는 project에 남는다.
 
-## 10. Export
+## 11. Export
 
 - **File > Export GenBank...**: 내부적으로 임시 파일에 쓴 뒤 다시 읽어서 원본과 의미적으로 동일한지 검증하고, 문제가 없을 때만 최종 경로에 기록한다(원본 파일 덮어쓰기 없음).
 - **File > Export GFF3...**: 서열을 같은 파일에 포함(`##FASTA`)할지 별도 파일로 둘지 물어본다.
 - **File > Export Nucleotide FASTA...** / **Export Protein FASTA (protein records)...** / **Export Protein FASTA (CDS translations)...** / **Export FFN (CDS nucleotide)...** / **Export Feature Table CSV...**
 
-## 11. Project 동시 열기 / 비정상 종료
+## 12. Project 동시 열기 / 비정상 종료
 
 같은 project 파일을 다른 GenomeWorkbench 창(또는 이전에 비정상 종료된 세션)이 이미 열고 있으면, **Open Project**시 알림이 뜨고 **읽기 전용으로 열기** 또는 **강제로 편집 모드로 열기**(다른 인스턴스가 실제로 열려있지 않다고 확신할 때만) 중 선택할 수 있다.
 
-## 12. 문제 해결
+## 13. 문제 해결
 
 - **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\GenomeWorkbench\logs`의 로그 파일을 확인한다.
 - **`GenomeWorkbench.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\GenomeWorkbench\last_self_test_output.json`에 모두 기록된다.
