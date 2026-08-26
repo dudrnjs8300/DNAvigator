@@ -26,6 +26,11 @@ Windows Defender/SmartScreen이 서명되지 않은 실행파일이라는 경고
 
 project를 열면 왼쪽 **Project Explorer**, 가운데 **Genome Map / Circular Map / Feature Table** 탭, 오른쪽 **Inspector**, 하단 **Jobs & Log / BLAST** 패널이 나타난다.
 
+**Project Explorer로 record 정리하기**: 빈 공간을 우클릭하면 **New Folder...**로 폴더를 만들 수 있고, 폴더 안에 다시 하위 폴더를 만들 수도 있다(중첩 가능). Record나 폴더를 우클릭하면:
+- **Move to Folder...**: 원하는 폴더(또는 "Project root")로 이동한다.
+- **Rename Folder...** / **Delete Folder** (폴더를 지워도 안의 record와 하위 폴더는 삭제되지 않고 한 단계 위로 이동한다 — 폴더는 순수하게 정리용이라 실수로 데이터를 잃을 위험이 없다).
+- **Delete Record...**: 확인 후 이 record와 그 안의 모든 annotation을 project에서 완전히 삭제한다(원본 파일은 영향받지 않는다). 되돌릴 수 없으니 확인 창의 내용을 확인할 것.
+
 ## 3. 파일 열기 (Import)
 
 - **File > Import FASTA...**: `.fasta`, `.fa`, `.fna`, `.faa` 등(gzip 포함)을 연다. 여러 record가 있으면 모두 Project Explorer에 나타난다.
@@ -51,6 +56,11 @@ project를 열면 왼쪽 **Project Explorer**, 가운데 **Genome Map / Circular
 - 세부 확대: 염기 문자(윗줄: 정방향, 아랫줄: 상보가닥), CDS라면 그 위에 번역된 amino acid도 표시
 
 **Circular Map** 탭은 현재 record의 topology가 실제로 **circular**일 때만 활성화되고, circular record를 선택하면 자동으로 그 탭이 기본으로 열린다(선형 지도는 언제든 탭을 눌러 볼 수 있다). linear record에서는 원형으로 표시할 근거(원점)가 없으므로 이 탭 자체가 비활성화된다. Project Explorer에서 record를 우클릭하면 **Set Circular / Set Linear**로 topology를 바꿀 수 있다.
+
+Circular Map에서도 마우스만으로 조작할 수 있다:
+- **마우스 휠**: 확대/축소(중심 기준).
+- **빈 배경 위에서 드래그**: 링을 회전시킨다(관심 있는 유전자를 원하는 각도로 돌려서 볼 수 있다). feature 위에서 드래그를 시작하면 대신 선택된다(기존 클릭 동작 유지).
+- 다른 record를 선택하면 확대/회전 상태는 자동으로 초기화된다.
 
 ## 5. 유전자/qualifier로 찾기 (Find)
 

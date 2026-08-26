@@ -1,8 +1,12 @@
 """Circular genome map: ring backbone with strand-separated feature arcs.
 
 Feature click selection is synchronized with the linear canvas / feature
-table / inspector via MainWindow. Origin is drawn at 12 o'clock, genome
-coordinate increasing clockwise.
+table / inspector via MainWindow. Origin is drawn at 12 o'clock (before any
+rotation is applied), genome coordinate increasing clockwise.
+
+Mouse wheel zooms (anchored on the ring center); left-drag starting on empty
+background (not on a feature) rotates the ring; left-drag on a feature keeps
+the existing click-to-select behavior.
 """
 
 from __future__ import annotations
@@ -10,16 +14,18 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QWheelEvent
 from PySide6.QtWidgets import QToolTip, QWidget
 
 from genome_workbench.domain.coordinates import display_from_internal
 from genome_workbench.domain.models import Feature, SequenceRecord
+from genome_workbench.ui.rendering.circular_viewport_transform import CircularViewportTransform
 from genome_workbench.ui.rendering.feature_colors import feature_color
 
 _MARGIN = 24
 _RING_WIDTH = 14
 _RING_GAP = 4
+_ZOOM_STEP = 1.15
 
 
 class CircularGenomeCanvas(QWidget):
@@ -34,11 +40,14 @@ class CircularGenomeCanvas(QWidget):
         self._features: list[Feature] = []
         self._selected_feature_id: str | None = None
         self._hover_feature_id: str | None = None
+        self._transform = CircularViewportTransform()
+        self._rotate_drag_last_angle: float | None = None
 
     def set_record(self, record: SequenceRecord | None, features: list[Feature]) -> None:
         self._record = record
         self._features = features
         self._selected_feature_id = None
+        self._transform = self._transform.reset()
         self.update()
 
     def set_features(self, features: list[Feature]) -> None:
@@ -49,18 +58,29 @@ class CircularGenomeCanvas(QWidget):
         self._selected_feature_id = feature_id
         self.update()
 
+    def reset_view(self) -> None:
+        self._transform = self._transform.reset()
+        self.update()
+
+    @property
+    def viewport_transform(self) -> CircularViewportTransform:
+        return self._transform
+
     def _center_and_radius(self) -> tuple[QPointF, float]:
         side = min(self.width(), self.height()) - 2 * _MARGIN
-        radius = max(10.0, side / 2)
-        center = QPointF(self.width() / 2, self.height() / 2)
+        base_radius = max(10.0, side / 2)
+        radius = base_radius * self._transform.zoom_scale
+        center = QPointF(
+            self.width() / 2 + self._transform.pan_x, self.height() / 2 + self._transform.pan_y
+        )
         return center, radius
 
     def _position_to_angle_degrees(self, position0: int, length: int) -> float:
         fraction = position0 / max(length, 1)
-        return -90.0 + fraction * 360.0
+        return -90.0 + fraction * 360.0 + self._transform.rotation_degrees
 
     def _angle_to_position(self, angle_degrees: float, length: int) -> int:
-        normalized = (angle_degrees + 90.0) % 360.0
+        normalized = (angle_degrees + 90.0 - self._transform.rotation_degrees) % 360.0
         return int(round(normalized / 360.0 * length)) % max(length, 1)
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
@@ -152,6 +172,10 @@ class CircularGenomeCanvas(QWidget):
                 return feature
         return None
 
+    def _angle_at_point_degrees(self, x: float, y: float) -> float:
+        center, _radius = self._center_and_radius()
+        return math.degrees(math.atan2(y - center.y(), x - center.x()))
+
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.button() != Qt.MouseButton.LeftButton:
             return
@@ -160,8 +184,23 @@ class CircularGenomeCanvas(QWidget):
             self._selected_feature_id = feature.id
             self.featureClicked.emit(feature.id)
             self.update()
+        else:
+            # empty background: start a rotate-drag instead of a selection
+            self._rotate_drag_last_angle = self._angle_at_point_degrees(
+                event.position().x(), event.position().y()
+            )
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._rotate_drag_last_angle is not None and (
+            event.buttons() & Qt.MouseButton.LeftButton
+        ):
+            current_angle = self._angle_at_point_degrees(event.position().x(), event.position().y())
+            delta = current_angle - self._rotate_drag_last_angle
+            self._transform = self._transform.rotated(delta)
+            self._rotate_drag_last_angle = current_angle
+            self.update()
+            return
+
         feature = self._feature_at_point(event.position().x(), event.position().y())
         new_hover = feature.id if feature is not None else None
         if new_hover != self._hover_feature_id:
@@ -177,7 +216,17 @@ class CircularGenomeCanvas(QWidget):
             )
             QToolTip.showText(event.globalPosition().toPoint(), tooltip, self)
 
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._rotate_drag_last_angle = None
+
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         feature = self._feature_at_point(event.position().x(), event.position().y())
         if feature is not None:
             self.featureDoubleClicked.emit(feature.id)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+        factor = _ZOOM_STEP if event.angleDelta().y() > 0 else 1.0 / _ZOOM_STEP
+        self._transform = self._transform.zoomed(factor)
+        self.update()
+        event.accept()

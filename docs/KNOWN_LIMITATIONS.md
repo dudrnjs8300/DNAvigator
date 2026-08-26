@@ -4,9 +4,13 @@
 
 ## 시각화
 
-- **Circular map의 zoom/rotation 없음** (Phase 3 나머지 범위). Click/hover/double-click selection은 동작하지만 원형 지도 자체를 확대하거나 회전할 수는 없다.
+- **Circular map의 zoom/rotation 구현됨.** 마우스 휠로 확대/축소(중심 기준), 빈 배경 드래그로 회전(feature 위 드래그는 기존처럼 선택으로 동작). 순수 상태 클래스(`ui/rendering/circular_viewport_transform.py`)로 분리해 단위 테스트하고, 실제 wheel/drag 이벤트로 UI 테스트도 추가했다(`tests/ui/test_circular_map_zoom_rotation.py`). Record를 전환하면 확대/회전 상태가 자동으로 초기화된다. Pan(줌 상태에서 드래그로 이동)은 구현하지 않았다 — 회전만으로 원하는 각도를 볼 수 있어 우선순위를 낮췄다.
 - **10,000+ feature 규모의 렌더링 성능 벤치마크 미실시** (Phase 3 gate, 5.5 Mb/6,000 feature). `FeatureIntervalIndex`는 spec 8.3 권장 방식(sorted start + bisect, 최대 feature 길이로 범위 제한)으로 구현되어 있으나 대규모 실측은 아직 없다.
 - **DPI(125/150/200%) 및 다크/라이트 테마 미검증** (Phase 7). offscreen 플랫폼에서만 자동 검증했다.
+
+## Project 관리
+
+- **Record 삭제와 폴더 정리 구현됨.** 이전에는 Project Explorer가 record를 지울 수도, 그룹으로 묶을 수도 없는 평면 목록이었다. 이제 Project Explorer는 실제 중첩 폴더 트리를 지원한다(New Folder/Rename/Move to Folder/Delete Folder — 폴더 삭제는 안의 record/하위 폴더를 절대 지우지 않고 한 단계 위로 옮긴다) + record를 완전히 삭제하는 기능(확인 대화상자 포함, annotation도 함께 정리됨). 기존 project 파일도 schema v1→v2 자동 migration으로 문제없이 열린다. `tests/integration/test_project_service_records_and_folders.py`, `tests/ui/test_project_explorer_folders.py`, `tests/integration/test_sqlite_repository.py`(migration 테스트 포함)로 검증.
 
 ## Annotation
 
