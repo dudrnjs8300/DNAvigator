@@ -2,13 +2,29 @@
 
 이 문서는 milestone 체크리스트와 각 phase의 gate 통과 여부, 다음 session이 이어갈 정확한 지점을 기록한다. 새 session은 `docs/PRODUCT_SPEC.md`, 이 문서, `git log`, 실패 테스트를 먼저 읽고 이어간다.
 
-## 현재 상태 요약 (2026-08-26, 5차/최종 업데이트)
+## 현재 상태 요약 (2026-08-26, 6차/최종 업데이트)
 
-- Phase 0, 1, 2, 3(시각화), 4(annotation editor), 5/6(BLAST 핵심), 7(export 완성) 완료. Phase 8도 문서/portable ZIP/최종 검증까지 완료 — installer 컴파일과 실제 GitHub Actions 실행, 실제 BLAST+ 바이너리 재검증만 이 세션에서 하지 못했다(아래 "Phase 8" 절과 `docs/RELEASE_TEST_REPORT.md` 참고).
-- 전체 테스트: **183 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`).
+- Phase 0~8 전부 완료. 이전 업데이트에서 "이 sandbox에서 할 수 없다"고 적었던 5개 항목 중 4개(Inno Setup installer 컴파일+설치/제거 검증, 실제 NCBI BLAST+ 바이너리 검증, BLAST job 취소 UI, GFF3/qualifier 편집기 등은 이미 완료)를 이번 세션에서 실제로 완료했다. 남은 것은 "완전히 별도의 clean Windows 계정/VM 검증"과 "GitHub Actions 실제 실행"뿐이다 — 아래 참고.
+- 전체 테스트: **192 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`; 실제 BLAST+ 테스트 2건 포함하며 BLAST+ 미설치 환경에서는 자동 skip).
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench` 모두 clean.
-- Portable ZIP 빌드/검증 완료: `release/GenomeWorkbench-0.1.0-win-x64-portable.zip` (+ `.sha256`), 별도 임시 경로 및 한글/공백 경로로 압축 해제 후 `--self-test` exit 0 확인.
+- Portable ZIP + **Installer(.exe)** 둘 다 빌드/검증 완료: `release/GenomeWorkbench-0.1.0-win-x64-portable.zip`, `release/GenomeWorkbench-0.1.0-win-x64-setup.exe` (+ 각각 `.sha256`). Installer는 silent 설치(관리자 권한 불필요, `%LOCALAPPDATA%\Programs`) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 머신에서 실제로 검증됨.
+- **실제 NCBI BLAST+ 2.17.0(win64)**을 공식 FTP에서 설치(MD5 확인)해 blastn/blastp/database 생성/좌표 매핑/annotation 적용을 전부 실제 바이너리로 검증(`tests/integration/test_blast_real_installation.py`, BLAST+ 없는 환경에서는 자동 skip). 이 과정에서 `detector.py`의 버전 하드코딩 버그(2.16.0+만 인식)를 발견해 고쳤다.
 - 개발 환경 Python은 3.14.6 (3.12 미설치, D-001 참고). `requires-python`은 `>=3.12` 유지.
+
+## 이번 세션 추가 작업 (2026-08-26, 사용자가 4개 기능 확인 요청 후)
+
+사용자가 "① 유전자 방향 표시, ② feature hover 시 정보 툴팁, ③ 원형 조립 여부에 따른 원형/선형 표시, ④ 유전자 이름/정보 검색"이 구현되어 있는지 확인해달라고 요청했다. 코드를 직접 확인한 결과 ①②는 이미 구현되어 있었고(`GenomeCanvas`/`CircularGenomeCanvas`의 strand arrow + tooltip), ③④는 없었다:
+
+- [x] **③ topology 기반 Circular Map tab 제어**: `MainWindow._apply_topology_tab_state`/`_select_default_tab_for_current_record` 추가. Circular Map tab은 현재 record의 topology가 실제로 CIRCULAR일 때만 활성화되고 자동으로 기본 선택된다. Linear record에서는 비활성화되고(원점이 없는 분자를 원형으로 그릴 근거가 없으므로) Genome Map으로 자동 대체된다.
+- [x] **④ Find Feature(Ctrl+F)**: `ui/dialogs/find_feature_dialog.py` 신규 — project 전체 record를 대상으로 gene/locus_tag/product/note/모든 qualifier 값을 부분 일치 검색, 결과 더블클릭/Enter로 해당 record 전환 + zoom-to-feature + Inspector 동기화.
+- [x] UI 테스트 2건 추가(`test_circular_topology_drives_which_map_tab_is_available`, `test_find_feature_by_gene_name_navigates_to_match`), `docs/USER_GUIDE_KO.md`에 섹션 추가.
+
+이후 사용자가 이전에 기록해둔 우선순위(Inno Setup → 실제 BLAST+ → BLAST cancel UI) 그대로 이어서 진행했다(사용자 승인 하에 winget으로 Inno Setup 설치, 공식 NCBI FTP에서 BLAST+ 설치):
+
+- [x] **Inno Setup installer**: winget으로 Inno Setup 6 설치 → `installer/genome_workbench.iss` 컴파일 → silent 설치/실행/제거 전체 사이클 검증. 언어 2개 등록 시 `/VERYSILENT`만으로는 언어 선택 대화상자가 떠서 자동화 설치가 멈추는 것을 발견 — `/LANG=`을 함께 지정해야 함을 확인하고 스크립트 주석에 기록.
+- [x] **실제 BLAST+ 검증**: 위 요약 참고. `tests/integration/test_blast_real_installation.py` 추가.
+- [x] **BLAST job 취소 UI**: `infrastructure/blast/runner.py`를 `subprocess.run`(끊을 수 없음) 대신 `subprocess.Popen` + 0.2초 폴링으로 교체해 `threading.Event`로 실제 취소 가능하게 만들고, `CallableWorker.with_cancel_support()` + `BlastPanel`의 "Cancel Job" 버튼으로 연결. `tests/unit/test_blast_runner_cancel.py`(실제 30초 sleep 자식 프로세스를 5초 이내에 죽이는지 확인), `tests/ui/test_callable_worker_cancel.py` 추가.
+- [x] 매 단계마다 dist 재빌드 → portable ZIP/installer 재생성 → self-test/smoke-test/설치-제거 재검증 → 커밋을 반복해, 최종 산출물이 모든 변경사항을 반영하고 있음을 확인했다.
 
 ## Phase 8 — Windows release와 문서 (거의 완료, 2026-08-26)
 
@@ -110,13 +126,14 @@
 
 ## 다음 session이 있다면 시작할 지점
 
-P0 핵심 기능은 전부 구현·테스트되었다. 남은 것은 순수하게 "이 sandbox 환경에서 할 수 없었던 것들"이다:
+P0 핵심 기능은 전부 구현·테스트되었고, 이전에 "sandbox 환경에서 할 수 없다"고 적었던 5개 항목 중 4개를 이번 세션에서 완료했다. 진짜로 남은 것은 이 개발 머신 자체의 한계로 여기서는 못 하는 두 가지뿐이다:
 
-1. Inno Setup 6 설치 후 `iscc installer\genome_workbench.iss` 실행 → 클린 VM에서 설치/실행/제거 검증 (spec AT-10).
-2. 실제 NCBI BLAST+ 설치 후 `docs/BLAST_SETUP.md` 절차 재현 → `docs/RELEASE_TEST_REPORT.md`의 AT-06/AT-07을 mock이 아닌 실제 바이너리로 재검증.
-3. BLAST job 취소(cancel) UI 추가 (`ui/workers/callable_worker.py`에 cancel 메서드 추가 + `BlastPanel`에 버튼) — spec AT-08.
-4. 원격 저장소에 push하고 실제 GitHub Actions에서 `.github/workflows/*.yml` 실행 확인 (사용자 승인 필요).
-5. blastp(protein) 경로 전용 e2e UI 테스트 추가.
+1. **완전히 별도의 clean Windows 사용자 계정 또는 VM**에서 installer 설치/실행/제거 검증 (spec AT-10) — 이 개발 머신은 이미 Python/개발 도구가 설치된 환경이라 "아무것도 없는 머신에서도 동작하는가"를 완벽히 대체하지 못한다. Installer 자체는 이 머신에서 silent 설치/제거까지 실증됨(`docs/RELEASE_TEST_REPORT.md` AT-10 참고).
+2. 원격 저장소에 push하고 실제 GitHub Actions에서 `.github/workflows/*.yml` 실행 확인 (사용자 승인 필요 — destructive/외부 공개 작업이므로 자동으로 진행하지 않음).
+
+부가적으로 남은 더 작은 gap:
+3. blastp(protein) 경로 UI 계층(dispatch/dialog) 전용 자동 테스트 — 서비스 계층은 실제 BLAST+로 검증됨(`test_blast_real_installation.py`), UI 계층은 blastn 경로만 있음. Program 값과 무관하게 동일한 코드 경로라 위험은 낮음.
+4. blastx/tblastn(번역 검색) frame 좌표 매핑의 실제 바이너리 검증 — blastn/blastp만 실제 바이너리로 검증됨.
 
 ## 알려진 리스크 / 재검증 필요 항목
 
