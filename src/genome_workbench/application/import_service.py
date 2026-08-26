@@ -10,7 +10,8 @@ from genome_workbench.domain.events import EventType
 from genome_workbench.domain.models import Feature, MoleculeType, SequenceRecord
 from genome_workbench.infrastructure.formats.fasta_adapter import read_fasta
 from genome_workbench.infrastructure.formats.genbank_adapter import read_genbank
-from genome_workbench.infrastructure.formats.issues import ImportIssue
+from genome_workbench.infrastructure.formats.gff3_adapter import read_gff3
+from genome_workbench.infrastructure.formats.issues import ImportIssue, ImportSeverity
 
 
 @dataclass(slots=True)
@@ -59,4 +60,55 @@ class ImportService:
             records=parsed.records,
             features_by_record_id=parsed.features_by_record_id,
             issues=list(parsed.issues),
+        )
+
+    def import_gff3(self, path: Path, external_fasta_path: Path | None = None) -> ImportResult:
+        repo = self._project_service.get_repository()
+        parsed = read_gff3(Path(path))
+        issues = list(parsed.issues)
+
+        if external_fasta_path is not None:
+            fasta_result = read_fasta(Path(external_fasta_path))
+            sequences_by_id = {r.display_id: r for r in fasta_result.records}
+            for record in parsed.records:
+                matched = sequences_by_id.pop(record.display_id, None)
+                if matched is not None:
+                    record.sequence = matched.sequence
+                    record.checksum_sha256 = matched.checksum_sha256
+                    record.molecule_type = matched.molecule_type
+                    parsed.unmatched_seqids.discard(record.display_id)
+            for leftover_id in sequences_by_id:
+                issues.append(
+                    ImportIssue(
+                        ImportSeverity.WARNING,
+                        "unmatched_fasta_record",
+                        f"FASTA record '{leftover_id}' has no matching GFF3 seqid",
+                    )
+                )
+
+        for seqid in parsed.unmatched_seqids:
+            issues.append(
+                ImportIssue(
+                    ImportSeverity.WARNING,
+                    "unmatched_seqid",
+                    f"GFF3 seqid '{seqid}' has no sequence data (annotation-only)",
+                )
+            )
+
+        for record in parsed.records:
+            repo.save_record(record)
+        for features in parsed.features_by_record_id.values():
+            for feature in features:
+                repo.save_feature(feature)
+        if parsed.records:
+            self._project_service.log_audit(
+                EventType.IMPORT,
+                parsed.records[0].id,
+                f"Imported {len(parsed.records)} record(s) from GFF3: {Path(path).name}",
+            )
+        self._project_service.touch()
+        return ImportResult(
+            records=parsed.records,
+            features_by_record_id=parsed.features_by_record_id,
+            issues=issues,
         )

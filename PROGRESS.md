@@ -2,13 +2,30 @@
 
 이 문서는 milestone 체크리스트와 각 phase의 gate 통과 여부, 다음 session이 이어갈 정확한 지점을 기록한다. 새 session은 `docs/PRODUCT_SPEC.md`, 이 문서, `git log`, 실패 테스트를 먼저 읽고 이어간다.
 
-## 현재 상태 요약 (2026-08-26, 2차 업데이트)
+## 현재 상태 요약 (2026-08-26, 3차 업데이트)
 
-- Phase 0, Phase 1 완료. **사용자 피드백으로 Phase 3(genome visualization)과 Phase 5/6(BLAST)의 핵심을 Phase 2보다 먼저 앞당겨 구현함** — 최초 구현이 "sequence 목록 조회기"에 가깝고 Geneious 스타일의 실제 시각화 워크벤치가 아니라는 지적을 받아, 중앙 화면과 상호작용을 전면 재설계했다. 자세한 내용은 "Phase 3/BLAST 조기 구현" 절 참고.
-- 전체 테스트: **112 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`). UI 테스트 7개 중 4개가 실제 마우스 드래그/클릭/줌/BLAST 워크플로를 검증한다(`tests/ui/test_genome_visualization_workflow.py`).
+- Phase 0, Phase 1, Phase 2 완료. Phase 3(시각화)과 Phase 5/6(BLAST) 핵심도 사용자 피드백으로 앞당겨 완료됨. 사용자가 "중단 없이 끝까지 진행하라"고 재확인해 계속 Phase 4/7/8로 진행 중.
+- 전체 테스트: **152 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`).
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench` 모두 clean.
-- Windows onedir 빌드(`dist/GenomeWorkbench/GenomeWorkbench.exe`) 새 코드 포함해 재빌드 및 재검증 완료: `--self-test`, `--smoke-test` 모두 exit 0.
 - 개발 환경 Python은 3.14.6 (3.12 미설치, D-001 참고). `requires-python`은 `>=3.12` 유지.
+
+## Phase 2 — GenBank/GFF3와 복합 feature (완료, 2026-08-26)
+
+- [x] `infrastructure/formats/gff3_adapter.py`: 9-column parser/writer, directive(`##sequence-region`/`##species`/`##genome-build` 등 보존), embedded/separate FASTA, percent-escaping, discontinuous feature(같은 ID) → compound location, Parent/child 관계, cycle 검출. Reverse-strand discontinuous feature의 order_index 규칙은 D-002와 동일하게 `order_parts_for_strand`를 재사용(문서화: 모듈 docstring + D-002).
+- [x] `##gff-version 3` 헤더가 없는 파일은 GFF2/기타로 판단해 조용히 오해석하지 않고 명시적 오류를 낸다(spec 6.5 요구사항).
+- [x] GenBank record-level metadata(organism, taxonomy, source, keywords, accessions, comment, references) `annotations_json`에 보존 — import/export round-trip 테스트 통과.
+- [x] `ImportService.import_gff3`/`ExportService.export_gff3` (embed_fasta 옵션, separate FASTA pairing, semantic round-trip 검증), MainWindow File 메뉴에 연결(Import GFF3/Export GFF3, 얽힌 FASTA 선택 프롬프트 포함).
+- [x] `semantic_compare.py`에 parent/child relationship 비교 추가(position 기반 매칭, ID는 재수입 시 바뀌므로).
+- [x] spec 16.2 fixture 전부 생성(`multi_contig.fasta`, `protein_set.faa`, `annotated_linear.gbk`, `circular_origin.gbk`, `compound_fuzzy.gbk`, `annotated_embedded.gff3`, `annotation_only.gff3`+`matching.fna`, `invalid_coordinates.gff3`, `duplicate_ids.fasta`, 한글 경로 fixture, BLAST용 tiny FASTA 2종) — `scratch/generate_fixtures.py`(gitignore됨, 재실행 가능)로 생성. `tests/integration/test_fixtures_import_all.py`가 전부 import 검증.
+- **Gate 통과**: 제공 fixture 전체 import(26개 테스트), GenBank/GFF3 semantic round-trip, negative strand/joined CDS/phase 테스트 통과.
+
+### 다음 session 시작 지점 (Phase 4/7/8 나머지)
+
+1. Compound(join) location을 마우스로 만드는 UI (AddFeatureDialog가 아직 단일 LocationPart만 생성).
+2. Inspector의 "전체 qualifier" key/value 자유 편집기 (현재 6개 공통 필드만).
+3. Autosave/crash recovery.
+4. FASTA/FAA/FFN/feature table CSV export.
+5. Windows installer(Inno Setup), 사용자 매뉴얼, 실제 GitHub Actions 실행 검증.
 
 ## Phase 0 — 저장소, 품질 기준, 실행 skeleton
 
@@ -74,28 +91,9 @@
 - [ ] BLAST DB의 project 귀속/삭제 시 정리, 여러 query(batch BLAST) 미지원
 - [ ] GC content/skew track, feature drag로 여러 구간 join 편집
 
-## Phase 2 — GenBank/GFF3와 복합 feature (다음 작업)
+## Phase 4/5/6/7/8 — 나머지
 
-### 아직 안 한 것
-
-- [ ] multi-record GenBank의 record-level metadata(annotations_json에 organism/taxonomy/references 등) 보존 — 현재는 최소 필드만 저장
-- [ ] GFF3 parser/writer (`infrastructure/formats/gff3_adapter.py` 미생성)
-- [ ] embedded/separate FASTA pairing, seqid mapping wizard
-- [ ] Parent/child graph (feature_relationship 테이블은 이미 존재하나 GFF3 adapter에서 실제로 채우지 않음)
-- [ ] fuzzy location의 GFF3 표현, validation framework 확장 (현재 `domain/validation.py`는 좌표범위/CDS translation만 검사)
-- [ ] compound_fuzzy.gbk, annotated_embedded.gff3 등 나머지 fixture 생성 (현재 fixture는 `simple_linear.fasta`만 존재 — 16.2절 목록의 나머지 11개 fixture 아직 없음)
-- [ ] `docs/FORMAT_SUPPORT.md` compatibility matrix 채우기
-
-### 다음 session 시작 지점
-
-1. `tests/fixtures/`에 spec 16.2 목록의 나머지 fixture를 합성 데이터로 생성 (`multi_contig.fasta`, `protein_set.faa`, `annotated_linear.gbk`, `circular_origin.gbk`, `compound_fuzzy.gbk`, `annotated_embedded.gff3`, `annotation_only.gff3`+`matching.fna`, `invalid_coordinates.gff3`, `duplicate_ids.fasta`, 한글 경로 fixture, BLAST용 tiny FASTA 2종).
-2. `src/genome_workbench/infrastructure/formats/gff3_adapter.py` 신규 구현. 좌표 변환은 `domain/coordinates.py`, part 순서/strand 규칙은 `domain/locations.py`(D-002 규칙)를 그대로 재사용 — GFF3의 discontinuous feature(같은 ID를 가진 여러 줄)도 Biopython GenBank와 동일한 order_index 규칙을 따라야 semantic_compare가 일관되게 동작함.
-3. `Feature.parent_ids`/`child_ids`를 GFF3 adapter에서 실제로 채우고, `sqlite_repository.py`의 `feature_relationship` 테이블 round-trip을 테스트로 검증.
-4. Phase 2 gate: 제공 fixture 전체 import, GenBank/GFF3 semantic round-trip, negative strand/joined CDS/phase 테스트 통과.
-
-## Phase 3–8
-
-미착수. `docs/PRODUCT_SPEC.md` 17장 원문 참고. 각 phase 착수 시 이 파일에 체크리스트를 추가할 것.
+Phase 5/6(BLAST 핵심)는 이미 완료됨(위 "Phase 3/BLAST 조기 구현" 절 참고). 남은 항목은 `docs/PRODUCT_SPEC.md` 17장 원문 참고. 각 phase 착수 시 이 파일에 체크리스트를 추가할 것.
 
 ## 알려진 리스크 / 재검증 필요 항목
 

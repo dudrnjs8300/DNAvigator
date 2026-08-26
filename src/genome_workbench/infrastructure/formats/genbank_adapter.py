@@ -14,6 +14,7 @@ either direction — the adapter trusts Biopython's part order completely.
 from __future__ import annotations
 
 import gzip
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from Bio.SeqFeature import (
     BeforePosition,
     CompoundLocation,
     ExactPosition,
+    Reference,
     SeqFeature,
     SimpleLocation,
 )
@@ -123,6 +125,7 @@ def read_genbank(path: Path, record_id_generator=None) -> GenbankImportResult:
             topology=topology,
             sequence=sequence,
             checksum_sha256=sha256_of_text(sequence),
+            annotations_json=_extract_annotations_json(bio_record),
             source_format="genbank",
             source_record_index=index,
         )
@@ -146,6 +149,81 @@ def read_genbank(path: Path, record_id_generator=None) -> GenbankImportResult:
         result.features_by_record_id[record_id] = features
 
     return result
+
+
+def _extract_annotations_json(bio_record: SeqRecord) -> str:
+    # Biopython's own SeqRecord.annotations type hint (str | int) is narrower
+    # than what it actually stores at runtime (also list, e.g. taxonomy/
+    # references) — this is a known imprecision in Biopython's stubs.
+    references = []
+    raw_references: object = bio_record.annotations.get("references", [])
+    for ref in raw_references if isinstance(raw_references, list) else []:
+        references.append(
+            {
+                "authors": getattr(ref, "authors", "") or "",
+                "title": getattr(ref, "title", "") or "",
+                "journal": getattr(ref, "journal", "") or "",
+                "pubmed_id": getattr(ref, "pubmed_id", "") or "",
+                "medline_id": getattr(ref, "medline_id", "") or "",
+                "comment": getattr(ref, "comment", "") or "",
+            }
+        )
+    data = {
+        "organism": bio_record.annotations.get("organism", ""),
+        "taxonomy": bio_record.annotations.get("taxonomy", []),
+        "source": bio_record.annotations.get("source", ""),
+        "keywords": bio_record.annotations.get("keywords", []),
+        "accessions": bio_record.annotations.get("accessions", []),
+        "sequence_version": bio_record.annotations.get("sequence_version"),
+        "date": bio_record.annotations.get("date", ""),
+        "data_file_division": bio_record.annotations.get("data_file_division", ""),
+        "comment": bio_record.annotations.get("comment", ""),
+        "references": references,
+    }
+    return json.dumps(data)
+
+
+def _apply_record_annotations(bio_record: SeqRecord, annotations_json: str) -> None:
+    try:
+        data = json.loads(annotations_json) if annotations_json else {}
+    except json.JSONDecodeError:
+        data = {}
+    if not isinstance(data, dict):
+        return
+
+    string_fields = (
+        "organism",
+        "source",
+        "date",
+        "data_file_division",
+        "comment",
+    )
+    for field_name in string_fields:
+        value = data.get(field_name)
+        if value:
+            bio_record.annotations[field_name] = value
+
+    for list_field in ("taxonomy", "keywords", "accessions"):
+        value = data.get(list_field)
+        if value:
+            bio_record.annotations[list_field] = value
+
+    if data.get("sequence_version") is not None:
+        bio_record.annotations["sequence_version"] = data["sequence_version"]
+
+    references_data = data.get("references") or []
+    reference_objects = []
+    for ref_data in references_data:
+        reference = Reference()
+        reference.authors = ref_data.get("authors", "")
+        reference.title = ref_data.get("title", "")
+        reference.journal = ref_data.get("journal", "")
+        reference.pubmed_id = ref_data.get("pubmed_id", "")
+        reference.medline_id = ref_data.get("medline_id", "")
+        reference.comment = ref_data.get("comment", "")
+        reference_objects.append(reference)
+    if reference_objects:
+        bio_record.annotations["references"] = reference_objects  # type: ignore[assignment]
 
 
 def _convert_bio_feature(
@@ -230,6 +308,7 @@ def _build_bio_record(record: SequenceRecord, features: list[Feature]) -> SeqRec
     bio_record.annotations["topology"] = (
         record.topology.value if record.topology != Topology.UNKNOWN else "linear"
     )
+    _apply_record_annotations(bio_record, record.annotations_json)
 
     for feature in features:
         bio_record.features.append(_build_bio_feature(feature))

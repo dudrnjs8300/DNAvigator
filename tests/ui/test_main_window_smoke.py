@@ -109,3 +109,64 @@ def test_new_project_import_fasta_add_feature_save_reopen(qtbot, tmp_path, monke
     reopened_features = window.project_service.list_features(reopened_records[0].id)
     assert len(reopened_features) == 1
     window.project_service.close()
+
+
+def test_export_gff3_and_import_gff3_menu_actions(qtbot, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    project_path = str(tmp_path / "gff3_flow" / "project.gwbproj")
+    fasta_path = str(FIXTURES_DIR / "simple_linear.fasta")
+    gff3_out_path = str(tmp_path / "gff3_flow" / "export.gff3")
+
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getSaveFileName",
+        staticmethod(lambda *a, **k: (project_path, "")),
+    )
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QInputDialog.getText",
+        staticmethod(lambda *a, **k: ("GFF3 Flow", True)),
+    )
+    window._on_new_project()
+
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getOpenFileName",
+        staticmethod(lambda *a, **k: (fasta_path, "")),
+    )
+    window._on_import_fasta()
+    record = window.project_service.list_records()[0]
+    window.annotation_service.create_simple_feature(
+        record, 101, 900, 1, "CDS", QualifierSet.from_pairs([("gene", "gffTest")])
+    )
+
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QMessageBox.question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+    )
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getSaveFileName",
+        staticmethod(lambda *a, **k: (gff3_out_path, "")),
+    )
+    window._on_export_gff3()
+    assert Path(gff3_out_path).exists()
+
+    second_project_path = str(tmp_path / "gff3_flow" / "reimport.gwbproj")
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getSaveFileName",
+        staticmethod(lambda *a, **k: (second_project_path, "")),
+    )
+    window._on_new_project()
+
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getOpenFileName",
+        staticmethod(lambda *a, **k: (gff3_out_path, "")),
+    )
+    window._on_import_gff3()
+    reimported_records = window.project_service.list_records()
+    assert len(reimported_records) == 1
+    reimported_features = window.project_service.list_features(reimported_records[0].id)
+    assert len(reimported_features) == 1
+    assert reimported_features[0].qualifiers.get_first("gene") == "gffTest"
+    window.project_service.close()

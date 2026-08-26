@@ -1,0 +1,30 @@
+LOCUS       strain_A                1000 bp    DNA     circular UNK 01-JAN-1980
+DEFINITION  .
+ACCESSION   strain_A
+VERSION     strain_A
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     CDS             51..350
+                     /gene="strainGene"
+ORIGIN
+        1 gcttgtaacc cgagcctggt ttatcggccc cacagtaccg tcgcggttct cgagaccgac
+       61 taactcggct agctgctgtg caggaaggta actagtggga gcttttattc ggctcatccg
+      121 agccggacaa tagcgttcct tcccaaactg agcaatgggc ctgggcgtac ggtaacaccg
+      181 gcgaaacgcc agcgtactcg ggctaaattc ggttcggtcg cgccagaagt ggaactggct
+      241 cgccttcatt taagaacttt cgattgtacc caaaggcagc tagctctgaa agcttcgtca
+      301 ggggaggtat gttgtgagaa aacgtatgac tagtcctgtt tcgacgtgca ggttagggca
+      361 atttggctca ctgatgaatc gttctaaaag agcttccacg acgtgagggg gacaaacgca
+      421 cgctgagcgg agcctaccac acgtttctaa ccgtgcttaa ctaccaattc gatactgttt
+      481 ctctatctca tacgacggta caactaaaat tataggttgg atgaaggttt aaacaacgca
+      541 atcctttcta tgcggttaac agctcttgtt atgctagcag ttactagttg cttagctccg
+      601 gcatcccaag ggcatccccg gtccacgtta caagagcaaa gcacttgagg acagttcagt
+      661 gtgcgcgcta ttacatcaat gacctcgcct acgagaaaag tttaagcgct gttggtcatc
+      721 tacaaagccc tcattgcctc cgtctttcag agtccgctag ggattggact ttgacctaat
+      781 ctgccatctt agaaggtccg gcgcaatacg ggattggggt agttttacat gatcccatag
+      841 gatgagcggc ggcgtagacg accactgtac ctgcgatttt ggcggttaga gttttgtgaa
+      901 agcggtggat cgtaatttgg ggatctttta tgaacgacct gtattatgaa ctttttggac
+      961 gtaggcaacg tctaggtcaa acgctaatcg gaaacttggg
+//

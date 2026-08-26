@@ -1,0 +1,58 @@
+LOCUS       compound_fuzzy          2500 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  Synthetic fixture with join and fuzzy locations.
+ACCESSION   compound_fuzzy
+VERSION     compound_fuzzy
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     CDS             complement(join(1001..1300,1501..1800))
+                     /gene="joinFuzzy"
+                     /product="compound protein"
+     misc_feature    <101..>400
+                     /note="fuzzy boundary feature"
+ORIGIN
+        1 tttgtaatgc atccggagag gtaggggcca atgcaagctg ggaaggatga gtaggagaac
+       61 tagaggacat tccggtgtca aactgcttgt caaccgtcaa ggaatgccat cacaccatag
+      121 tgtcttcgtt caattaacgc attttcttct gacggccctt ttcccggaag atcttataat
+      181 caccgtgcgc gcacgaagaa atttgatcac tggtagggaa atatataaga tactcagatc
+      241 aaccccggta gtctcgacgt ctcgagtctt aaaagataaa caccttcggc gtctgtagcc
+      301 tggacaacca ctcaggtcta gcgctggggc agtacattct cataagccta acgaactgac
+      361 tgcgtatcgt tatcccgccc tccccctatg gacaaaaaag ctggttcagc ccttcttcat
+      421 ttggtgtatt gatcggatta acttgtggtc taaggcgggt tacccgctgt ctacgacagg
+      481 ttgtgcgcct gctactatga aagtctatgg ctcacctcct gtaatgcgag agccctctac
+      541 cgggagtact gtcgaccctc agtgtcccgt ataaatccac cagaatgaac attgagaata
+      601 gacgaggatc tacccacaaa cggcaagcac ctaaaccaaa ggttgtacat agttttcagt
+      661 acaggttaga gcacttcggg cggcgaaagg tggctgcata acgagtttta ggatattagg
+      721 caatgccata gtaaattaca gaaccagttg ccgaaatagc gctaccaatg tagcctgggc
+      781 tgtgcccgtg tagtaggaaa tcgattccat cggattctag tagagctcgt acggcgatgg
+      841 agtttaagac atgcagaggc aaggaatcgg acacttgggg caatacgtac cagccgcgct
+      901 cgagtcgtaa atgacgtgac ttgtcccatt aatcacgtat ttgtgaccgc gaggcgtcga
+      961 gttggctgtt agatcgccgc ccctcgaatt tagtgaaata ggggaccacg tctaccgggg
+     1021 tctctgcagt ggaaccgaac tctcgcaccc aatgatgtat atgagctaca ccataccatc
+     1081 attactacat atcatcttat gtatgcgtaa cgatttgtca actacaacac gtagattctc
+     1141 atatggaacg tctctccgct tgttattctt tgtacgggcc aacgcacagg cgctcaaaat
+     1201 gcctcacata gtagatgtac ctcaggacca aaccgaacgg atcgtatact accccgaccg
+     1261 agaggagggc tgccgacgag attacggtcc ctgaggaatt gtactcggat aagcacttgc
+     1321 ttcgtcggac atgtcgtaag gtcagtcgtg tgaaaagtaa ccgaaacgcc gtccactaaa
+     1381 atcgcggatg ggtgacaggg aatgtgtctg ggcaaccgag ggtaccagtc agacaaatcg
+     1441 atataagcca atcgtcttct cagctggcct atccattaaa tagtgggctg tcgggcgtag
+     1501 ctttggtttg cgcaacggct tctccgagga cggctcaaca agtcaccccc aaacccaagc
+     1561 accatgaagg aaacctgcac catgcacgat gtacgcttta cttcgtacgc tccacattct
+     1621 agaactgccc ccaggtgtag aagagtaaag cccctcgctt aataaaccag gcaacctaat
+     1681 gacaaatacg gatgtgtata tcatgtatac ccaccggaaa agataacggc aaattcgcgc
+     1741 gtttacagct gtttcagcat ggtcgtcgct gtgacctaac tctgagcccg aattgagttg
+     1801 cgccgtgtat catatttaag catcgtgccg gggacaggac cattccatct cagcatactc
+     1861 gcgtcagaat acctaagctg gaggaacagc cagttaaagt gggtgttcgg atgccacgcg
+     1921 tagctctgtc gaaattacca cgcctatata tgcctacagg ttacagaggt gagcttggtt
+     1981 tcgcactagt agctgaacgc cctcgggcga ttgtgactat ctttgactcg aggtgtgaag
+     2041 ctcgctctga aaatgtcctc gtatctcagc ccaagaaggg agagggctgc ctttgctcat
+     2101 gtggctcagg gacagtgaga gtactcttgt ttgcttaatg tagacgtatt acccttgttt
+     2161 tcccatggcg tagcagaact ttttcgtggg ctcacagctt cgatcaggca agggctcaat
+     2221 tattgctcac tctcgcgaaa gggctgagag gcgattacag gagcacttaa gatgttgtgg
+     2281 gttcagctcg acatccctcg ggttcttatc gtacttgtgg actgaaaatt tagcatagta
+     2341 acctcaaaca agctcaaccg tgtaggaaac tctcagaact cagtatctag aagcccgcgc
+     2401 atagggctga gacaggtagg atatatccat agagttctac tggaagacgc agcaggttta
+     2461 gtgcacatac gctatataaa agctaccgtt agtcgactct
+//

@@ -146,12 +146,14 @@ class MainWindow(QMainWindow):
         self.action_import_genbank = make_action(
             self, "Import &GenBank...", self._on_import_genbank
         )
+        self.action_import_gff3 = make_action(self, "Import GFF&3...", self._on_import_gff3)
         self.action_save_project = make_action(
             self, "&Save Project", self._on_save_project, shortcut="Ctrl+S"
         )
         self.action_export_genbank = make_action(
             self, "&Export GenBank...", self._on_export_genbank
         )
+        self.action_export_gff3 = make_action(self, "Export GFF&3...", self._on_export_gff3)
         self.action_exit = make_action(self, "E&xit", self._on_exit)
         for action in (
             self.action_new_project,
@@ -159,9 +161,11 @@ class MainWindow(QMainWindow):
             None,
             self.action_import_fasta,
             self.action_import_genbank,
+            self.action_import_gff3,
             None,
             self.action_save_project,
             self.action_export_genbank,
+            self.action_export_gff3,
             None,
             self.action_exit,
         ):
@@ -216,9 +220,11 @@ class MainWindow(QMainWindow):
         has_records = is_open and bool(self.project_service.list_records())
         self.action_save_project.setEnabled(is_open)
         self.action_export_genbank.setEnabled(has_records)
+        self.action_export_gff3.setEnabled(has_records)
         self.action_add_feature.setEnabled(has_record)
         self.action_import_fasta.setEnabled(is_open)
         self.action_import_genbank.setEnabled(is_open)
+        self.action_import_gff3.setEnabled(is_open)
         self.action_undo.setEnabled(is_open and self.project_service.undo_stack.can_undo)
         self.action_redo.setEnabled(is_open and self.project_service.undo_stack.can_redo)
         self.action_zoom_whole_genome.setEnabled(has_record)
@@ -334,6 +340,39 @@ class MainWindow(QMainWindow):
         if result.records:
             self._on_record_selected(result.records[0].id)
 
+    def _on_import_gff3(self) -> None:
+        if not self._guard_project_open():
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Import GFF3", "", "GFF3 (*.gff *.gff3 *.gz)")
+        if not path:
+            return
+        result = self.import_service.import_gff3(Path(path))
+        missing_sequence = any(not record.sequence for record in result.records)
+        if missing_sequence:
+            answer = QMessageBox.question(
+                self,
+                "GFF3 has no embedded sequence",
+                "This GFF3 has no ##FASTA section, so records have no sequence yet. "
+                "Select a matching FASTA file to pair with it now?",
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                fasta_path, _ = QFileDialog.getOpenFileName(
+                    self, "Matching FASTA", "", "FASTA (*.fasta *.fa *.fna *.fsa *.gz)"
+                )
+                if fasta_path:
+                    for record in result.records:
+                        self.project_service.get_repository().delete_record(record.id)
+                    result = self.import_service.import_gff3(
+                        Path(path), external_fasta_path=Path(fasta_path)
+                    )
+        self._refresh_project_explorer()
+        self._update_action_states()
+        self._log(f"Imported {len(result.records)} record(s) from {path}")
+        for issue in result.issues:
+            self._log(f"  [{issue.severity}] {issue.message}")
+        if result.records:
+            self._on_record_selected(result.records[0].id)
+
     def _on_save_project(self) -> None:
         if not self._guard_project_open():
             return
@@ -355,6 +394,39 @@ class MainWindow(QMainWindow):
         }
         try:
             result = self.export_service.export_genbank(records, features_by_record_id, Path(path))
+        except ExportValidationError as exc:
+            QMessageBox.critical(self, "Export Failed Validation", str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Export Failed", str(exc))
+            return
+        self._log(f"Exported {len(records)} record(s) to {result.destination}")
+        for warning in result.warnings:
+            self._log(f"  [warning] {warning.message}")
+
+    def _on_export_gff3(self) -> None:
+        if not self._guard_project_open():
+            return
+        records = self.project_service.list_records()
+        if not records:
+            QMessageBox.information(self, "Export GFF3", "No records to export.")
+            return
+        embed = QMessageBox.question(
+            self, "Export GFF3", "Embed sequence as a ##FASTA section in the same file?"
+        )
+        path, _ = QFileDialog.getSaveFileName(self, "Export GFF3", "", "GFF3 (*.gff3)")
+        if not path:
+            return
+        features_by_record_id = {
+            record.id: self.project_service.list_features(record.id) for record in records
+        }
+        try:
+            result = self.export_service.export_gff3(
+                records,
+                features_by_record_id,
+                Path(path),
+                embed_fasta=(embed == QMessageBox.StandardButton.Yes),
+            )
         except ExportValidationError as exc:
             QMessageBox.critical(self, "Export Failed Validation", str(exc))
             return

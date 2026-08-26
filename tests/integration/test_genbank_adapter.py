@@ -200,6 +200,50 @@ def test_multi_record_genbank_import(tmp_path: Path):
     assert [r.display_id for r in result.records] == ["contig1", "contig2"]
 
 
+def test_record_level_metadata_round_trip(tmp_path: Path):
+    import json
+
+    annotations = {
+        "organism": "Escherichia coli",
+        "taxonomy": ["Bacteria", "Pseudomonadota"],
+        "comment": "Synthetic test comment.",
+        "keywords": ["plasmid"],
+        "references": [
+            {
+                "authors": "Smith J.",
+                "title": "A study of things",
+                "journal": "J Test 1:1-2 (2026)",
+                "pubmed_id": "12345678",
+                "medline_id": "",
+                "comment": "",
+            }
+        ],
+    }
+    record = SequenceRecord(
+        display_id="metarecord",
+        molecule_type=MoleculeType.DNA,
+        topology=Topology.LINEAR,
+        sequence="A" * 200,
+        checksum_sha256="",
+        annotations_json=json.dumps(annotations),
+    )
+    out_path = tmp_path / "metadata.gbk"
+    write_genbank([record], {record.id: []}, out_path)
+
+    text = out_path.read_text()
+    assert "Escherichia coli" in text
+    assert "Smith J." in text
+    assert "Synthetic test comment." in text
+
+    result = read_genbank(out_path)
+    reimported = json.loads(result.records[0].annotations_json)
+    assert reimported["organism"] == "Escherichia coli"
+    assert reimported["taxonomy"] == ["Bacteria", "Pseudomonadota"]
+    assert reimported["comment"] == "Synthetic test comment."
+    assert reimported["references"][0]["authors"] == "Smith J."
+    assert reimported["references"][0]["pubmed_id"] == "12345678"
+
+
 def test_protein_fasta_style_record_round_trip(tmp_path: Path):
     record = SequenceRecord(
         display_id="protein1",

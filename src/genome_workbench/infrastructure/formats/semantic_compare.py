@@ -122,6 +122,8 @@ def _compare_feature_lists(
 
     sorted_a = sorted(features_a, key=_feature_sort_key)
     sorted_b = sorted(features_b, key=_feature_sort_key)
+    index_a = {f.id: i for i, f in enumerate(sorted_a)}
+    index_b = {f.id: i for i, f in enumerate(sorted_b)}
 
     for feature_index, (fa, fb) in enumerate(zip(sorted_a, sorted_b, strict=True)):
         label = f"record[{record_index}].feature[{feature_index}]"
@@ -194,4 +196,15 @@ def _compare_feature_lists(
                     diffs.append(
                         SemanticDiff(DiffSeverity.ERROR, "cds_translation_checksum_mismatch", label)
                     )
+
+        parent_positions_a = sorted(index_a[pid] for pid in fa.parent_ids if pid in index_a)
+        parent_positions_b = sorted(index_b[pid] for pid in fb.parent_ids if pid in index_b)
+        if parent_positions_a != parent_positions_b:
+            diffs.append(
+                SemanticDiff(
+                    DiffSeverity.WARNING,
+                    "parent_relationship_mismatch",
+                    f"{label} parent position set {parent_positions_a} vs {parent_positions_b}",
+                )
+            )
     return diffs
