@@ -123,7 +123,7 @@ Feature Table 탭에서 여러 행을 **Ctrl/Shift-클릭**으로 다중 선택�
 
 **BLAST > BLAST Setup...** 을 클릭한다. 자동으로 PATH와 일반적인 설치 위치에서 `makeblastdb`, `blastdbcmd`, `blastn`, `blastp`, `blastx`, `tblastn`을 찾는다. 없으면 "BLAST+ bin directory"에 직접 경로를 입력하고 **Detect**를 누른다.
 
-이 프로그램은 BLAST+ 실행파일을 포함하지 않는다. 공식 배포처(https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)에서 내려받아 설치한 뒤 경로를 등록한다. 자세한 내용은 `docs/BLAST_SETUP.md` 참고.
+이 프로그램은 BLAST+ 실행파일을 포함하지 않는다. 대화상자의 **Download & Install BLAST+ (official NCBI build)** 버튼을 누르면 NCBI 공식 배포처에서 최신 Windows용 배포판(~140MB)을 내려받아 체크섬을 검증하고 `%LOCALAPPDATA%/GenomeWorkbench/tools`에 설치한 뒤 자동으로 재탐지한다(관리자 권한 불필요, 다운로드 중 진행률 표시 및 취소 가능). 수동으로 설치하고 싶다면 공식 배포처(https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)에서 내려받아 경로를 등록해도 된다. 자세한 내용은 `docs/BLAST_SETUP.md` 참고.
 
 ### 9.2 Custom database 만들기
 

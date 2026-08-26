@@ -70,4 +70,10 @@
 P0 Definition of Done(spec 18절) 대부분이 자동화 테스트와 실제 빌드로 뒷받침되며, 이번 갱신으로 installer의 설치/실행/제거, BLAST 파이프라인(blastn/blastp) 실제 바이너리 검증, BLAST job 취소 UI, 그리고 GitHub Actions 실제 실행(clean 러너에서의 패키징 exe 검증 포함)까지 모두 실증되었다. 다음은 여전히 미완/미검증 상태이며 "완성"이라고 보고하지 않는다:
 - 완전히 별도의 clean Windows 사용자 계정/VM에서의 **installer(.exe)** 설치 검증(패키징된 exe 자체는 GitHub Actions clean 러너에서 검증됨 — installer만 남음)
 - blastp 경로의 UI 계층(dispatch/dialog) 전용 자동 테스트(서비스 계층은 실제 바이너리로 검증됨)
-- blastx/tblastn(번역 검색) frame 좌표 매핑의 실제 바이너리 검증(blastn/blastp만 검증됨)
+
+## 업데이트 (2026-08-27)
+
+이 보고서 작성 이후 다음 두 항목이 추가로 검증/구현되어 결론을 갱신한다(이 시점 이전 섹션의 나머지 내용과 "192 passed" 수치는 작성 당시 스냅샷 그대로 남겨둔다):
+
+- **blastx/tblastn(번역 검색) frame 좌표 매핑을 실제 바이너리로 검증 완료.** `tests/integration/test_blast_real_installation.py`에 실제 `blastx`(뉴클레오타이드 query → protein database)와 실제 `tblastn`(protein query → 뉴클레오타이드 database) 테스트를 추가했다. 표준 유전암호로 알려진 단백질 서열을 프레임 0으로 손수 역번역한 뉴클레오타이드 fixture를 사용하고(프로젝트 자체의 `translate()`로 왕복 검증), 두 프로그램 모두 identity ≥99%의 정확한 top hit을 반환함을 확인했다. 이제 blastn/blastp/blastx/tblastn 4개 프로그램 모두 실제 NCBI BLAST+ 2.17.0으로 검증됨.
+- **Tool Setup Wizard에 공식 배포판 자동 다운로드 경로를 구현했다.** `infrastructure/blast/downloader.py`가 NCBI의 release index를 동적으로 읽어 최신 Windows 이식용 배포판(`x64-win64.tar.gz`)을 찾고, MD5 체크섬을 검증한 뒤 `%LOCALAPPDATA%/GenomeWorkbench/tools`에 압축을 푼다. `BlastSetupDialog`에 확인 대화상자·진행률 표시·취소를 갖춘 다운로드 버튼을 연결했다. 네트워크 계층은 fake `urlopen`으로 오프라인 검증(`tests/integration/test_blast_downloader.py` 5건, `tests/ui/test_blast_setup_download.py` 3건); NCBI 서버와의 실제 URL/체크섬 해석 가능 여부는 수동으로 별도 확인했으나(curl로 index/md5 응답 확인), 143MB 전체 다운로드까지 자동화 스위트에서 매번 받지는 않는다(느리고 네트워크 의존적이므로 의도적으로 제외).

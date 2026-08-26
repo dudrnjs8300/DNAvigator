@@ -2,7 +2,7 @@
 
 GenomeWorkbench는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 조건 미검토, `docs/LICENSING.md` 참고). 사용자가 직접 설치하거나 이미 설치된 것을 등록해야 한다.
 
-> **이 문서의 검증 상태**: 1절의 절차(공식 NCBI FTP에서 `ncbi-blast-2.17.0+-win64.exe` 다운로드 → MD5 확인 → silent 설치 `/S`)를 이 개발 머신에서 실제로 수행했고, GenomeWorkbench의 BLAST 파이프라인(설치 자동 탐지, 실제 `makeblastdb`로 nucleotide/protein database 생성, 실제 `blastn`/`blastp` 실행, 결과 파싱, 좌표 매핑, annotation 적용)을 전부 실제 바이너리로 검증했다(`tests/integration/test_blast_real_installation.py`). blastx/tblastn(번역 검색)은 여전히 mock 실행파일로만 검증되었다.
+> **이 문서의 검증 상태**: 1절의 절차(공식 NCBI FTP에서 `ncbi-blast-2.17.0+-win64.exe` 다운로드 → MD5 확인 → silent 설치 `/S`)를 이 개발 머신에서 실제로 수행했고, GenomeWorkbench의 BLAST 파이프라인(설치 자동 탐지, 실제 `makeblastdb`로 nucleotide/protein database 생성, 실제 `blastn`/`blastp`/`blastx`/`tblastn` 실행, 결과 파싱, 좌표 매핑, annotation 적용)을 4개 프로그램 전부 실제 바이너리로 검증했다(`tests/integration/test_blast_real_installation.py`). 2절의 앱 내장 자동 다운로드 경로도 이제 구현되어 있다.
 
 ## 1. 공식 BLAST+ 설치
 
@@ -20,9 +20,19 @@ GenomeWorkbench는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 
 
 이미 BLAST+가 시스템 PATH에 등록되어 있다면 경로를 비워두고 **Detect**만 눌러도 자동으로 찾는다.
 
-## 2. app-managed 자동 설치 / offline 설치
+## 2. app-managed 자동 설치
 
-**아직 구현되지 않음.** spec 11.1이 요구하는 "공식 배포 위치에서 자동 다운로드해 checksum 검증 후 설치"와 "offline archive 선택 설치" 경로는 이번 릴리스에 없다. 현재는 수동 설치 후 경로 등록만 지원한다. Phase 5 후속 작업으로 남아있다(`docs/KNOWN_LIMITATIONS.md` 참고).
+**BLAST > BLAST Setup...** 대화상자의 **Download & Install BLAST+ (official NCBI build)** 버튼을 누르면 다음을 자동으로 수행한다:
+
+1. NCBI의 release index 페이지(`ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/`)에서 최신 Windows 이식용 배포판(`ncbi-blast-X.Y.Z+-x64-win64.tar.gz`) 파일명을 동적으로 찾는다 — 특정 버전을 하드코딩하지 않으므로 NCBI가 새 버전을 내면 자동으로 그것을 받는다.
+2. 다운로드 전 대상 크기(~140MB)와 설치 경로를 안내하는 확인 대화상자를 띄운다.
+3. 다운로드하면서 NCBI가 함께 게시하는 MD5 체크섬 파일(`.tar.gz.md5`)과 비교해 무결성을 검증한다 — 일치하지 않으면 설치를 중단하고 부분 다운로드 파일을 지운다.
+4. `%LOCALAPPDATA%\GenomeWorkbench\tools\blast+\<버전>\`에 압축을 푼다(설치 프로그램이 아니라 단순 압축 해제이므로 관리자 권한이 필요 없다).
+5. 압축이 풀린 `bin` 폴더로 자동 재탐지한다.
+
+다운로드는 UI를 막지 않도록 별도 스레드에서 진행되며, 진행률 표시줄과 **Cancel** 버튼으로 중단할 수 있다.
+
+**offline archive를 직접 선택해 설치하는 경로는 아직 없다** — 오프라인 환경에서는 여전히 1절처럼 다른 곳에서 내려받은 설치파일을 수동으로 실행하거나 압축을 풀고 경로를 등록해야 한다.
 
 ## 3. Custom BLAST database 생성
 
