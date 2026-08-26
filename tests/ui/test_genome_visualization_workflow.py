@@ -295,3 +295,47 @@ def test_add_feature_dialog_join_mode_creates_compound_feature(qtbot, tmp_path, 
 
     persisted = window.project_service.list_features(record.id)
     assert any(f.id == feature.id for f in persisted)
+
+
+def test_export_nucleotide_fasta_menu_action(qtbot, tmp_path, monkeypatch):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    _open_project_with_fasta(window, tmp_path, monkeypatch)
+
+    out_path = tmp_path / "exported.fasta"
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QFileDialog.getSaveFileName",
+        staticmethod(lambda *a, **k: (str(out_path), "")),
+    )
+    window._on_export_nucleotide_fasta()
+    assert out_path.exists()
+    assert out_path.read_text().startswith(">simple_linear_1kb")
+
+
+def test_extract_selection_as_new_record_via_context_menu_dispatch(qtbot, tmp_path, monkeypatch):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    record = _open_project_with_fasta(window, tmp_path, monkeypatch)
+
+    before_count = len(window.project_service.list_records())
+    window._dispatch_selection_action("extract_record", 100, 300)
+
+    records = window.project_service.list_records()
+    assert len(records) == before_count + 1
+    new_record = next(r for r in records if r.id != record.id)
+    assert new_record.length == 200
+    assert new_record.sequence == record.sequence[100:300]
+
+
+def test_reverse_complement_record_via_context_menu_dispatch(qtbot, tmp_path, monkeypatch):
+    from genome_workbench.domain.sequence_ops import reverse_complement
+
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    record = _open_project_with_fasta(window, tmp_path, monkeypatch)
+
+    window._dispatch_selection_action("reverse_complement_record", 0, record.length)
+
+    records = window.project_service.list_records()
+    new_record = next(r for r in records if r.id != record.id)
+    assert new_record.sequence == reverse_complement(record.sequence)

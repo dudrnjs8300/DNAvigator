@@ -2,12 +2,18 @@
 
 이 문서는 milestone 체크리스트와 각 phase의 gate 통과 여부, 다음 session이 이어갈 정확한 지점을 기록한다. 새 session은 `docs/PRODUCT_SPEC.md`, 이 문서, `git log`, 실패 테스트를 먼저 읽고 이어간다.
 
-## 현재 상태 요약 (2026-08-26, 3차 업데이트)
+## 현재 상태 요약 (2026-08-26, 4차 업데이트)
 
-- Phase 0, Phase 1, Phase 2 완료. Phase 3(시각화)과 Phase 5/6(BLAST) 핵심도 사용자 피드백으로 앞당겨 완료됨. 사용자가 "중단 없이 끝까지 진행하라"고 재확인해 계속 Phase 4/7/8로 진행 중.
-- 전체 테스트: **152 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`).
+- Phase 0, 1, 2, 3(시각화), 4(annotation editor), 5/6(BLAST 핵심) 완료. Phase 7(export 완성) 대부분 완료. 남은 것은 Phase 8(Windows installer/문서/실제 GitHub Actions 검증)뿐.
+- 전체 테스트: **178 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`).
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench` 모두 clean.
 - 개발 환경 Python은 3.14.6 (3.12 미설치, D-001 참고). `requires-python`은 `>=3.12` 유지.
+
+## Phase 7 — export 완성, sequence operations (거의 완료, 2026-08-26)
+
+- [x] `infrastructure/formats/export_formats.py`: nucleotide FASTA, protein FASTA(record 직접 export / CDS translation export 두 가지), FFN(CDS 생물학적 서열), feature table CSV — 전부 `ExportService`를 통해 atomic write로 노출되고 File 메뉴에 연결됨.
+- [x] `SequenceOperationsService.extract_as_new_record`/`reverse_complement_as_new_record` (spec 10.1 non-destructive operations) — canvas 우클릭 메뉴의 "Extract Selection as New Record.../Reverse Complement Whole Record as New Record..."로 연결, 새 record는 project에 저장되지만 원본은 변경되지 않음.
+- **아직 안 한 것**: P1 base editor(substitution/insertion/deletion, 명세 10.2 — 의도적으로 P1로 유예), 성능 벤치마크(5.5Mb/6000 feature), malformed/adversarial input 전용 테스트 확대, 8시간 soak test.
 
 ## Phase 2 — GenBank/GFF3와 복합 feature (완료, 2026-08-26)
 
@@ -19,13 +25,13 @@
 - [x] spec 16.2 fixture 전부 생성(`multi_contig.fasta`, `protein_set.faa`, `annotated_linear.gbk`, `circular_origin.gbk`, `compound_fuzzy.gbk`, `annotated_embedded.gff3`, `annotation_only.gff3`+`matching.fna`, `invalid_coordinates.gff3`, `duplicate_ids.fasta`, 한글 경로 fixture, BLAST용 tiny FASTA 2종) — `scratch/generate_fixtures.py`(gitignore됨, 재실행 가능)로 생성. `tests/integration/test_fixtures_import_all.py`가 전부 import 검증.
 - **Gate 통과**: 제공 fixture 전체 import(26개 테스트), GenBank/GFF3 semantic round-trip, negative strand/joined CDS/phase 테스트 통과.
 
-### 다음 session 시작 지점 (Phase 4/7/8 나머지)
+### 다음 session 시작 지점 (Phase 8만 남음)
 
-1. Compound(join) location을 마우스로 만드는 UI (AddFeatureDialog가 아직 단일 LocationPart만 생성).
-2. Inspector의 "전체 qualifier" key/value 자유 편집기 (현재 6개 공통 필드만).
-3. Autosave/crash recovery.
-4. FASTA/FAA/FFN/feature table CSV export.
-5. Windows installer(Inno Setup), 사용자 매뉴얼, 실제 GitHub Actions 실행 검증.
+1. Windows installer(Inno Setup 스크립트, `installer/genome_workbench.iss`는 아직 빈 디렉터리).
+2. `docs/USER_GUIDE_KO.md`, `docs/BLAST_SETUP.md` 실제 작성(현재 화면 기준 스크린샷 필요).
+3. 실제 GitHub Actions에서 `.github/workflows/*.yml` 실행 검증(원격 push 필요, 사용자 승인 필요).
+4. PyInstaller 최종 재빌드 + `--self-test`/`--smoke-test` 재검증, portable ZIP/checksum 생성.
+5. `docs/RELEASE_TEST_REPORT.md`에 AT-01~AT-10 acceptance test 결과 기록.
 
 ## Phase 0 — 저장소, 품질 기준, 실행 skeleton
 

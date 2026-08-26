@@ -32,6 +32,10 @@
 - **Undo stack이 session 간 유지되지 않음** (설계상 의도됨 — project를 닫으면 초기화).
 - **Record topology 변경(linear/circular)이 undo 불가능** — `ProjectService.set_record_topology`는 undo stack을 거치지 않는 단순 mutation이다. 실수로 변경해도 되돌리기는 다시 우클릭으로 반대 값을 선택해야 한다.
 
+## Sequence 조작
+
+- **P1 base editor(substitution/insertion/deletion, circular origin rotation)가 없음** (의도적으로 P1로 유예, spec 10.2). P0의 non-destructive operation(copy/reverse-complement/translate/extract-as-new-record/whole-record-reverse-complement)은 모두 구현됨.
+
 ## 패키징 / 배포
 
 - **Installer(Inno Setup), file association, code signing 없음** (Phase 8). 현재는 PyInstaller onedir 산출물만 있으며 portable 형태로만 확인했다.

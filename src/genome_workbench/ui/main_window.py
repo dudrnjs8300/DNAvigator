@@ -36,6 +36,7 @@ from genome_workbench.domain.blast_models import (
     BlastSearchResult,
     suggest_program,
 )
+from genome_workbench.domain.events import EventType
 from genome_workbench.domain.locations import LocationPart
 from genome_workbench.domain.models import Feature, SequenceRecord, Topology
 from genome_workbench.infrastructure.filesystem.project_lock import ProjectLockedError
@@ -155,6 +156,25 @@ class MainWindow(QMainWindow):
             self, "&Export GenBank...", self._on_export_genbank
         )
         self.action_export_gff3 = make_action(self, "Export GFF&3...", self._on_export_gff3)
+        self.action_export_nucleotide_fasta = make_action(
+            self, "Export Nucleotide FASTA...", self._on_export_nucleotide_fasta
+        )
+        self.action_export_protein_fasta_records = make_action(
+            self,
+            "Export Protein FASTA (protein records)...",
+            self._on_export_protein_fasta_records,
+        )
+        self.action_export_protein_fasta_cds = make_action(
+            self,
+            "Export Protein FASTA (CDS translations)...",
+            self._on_export_protein_fasta_cds,
+        )
+        self.action_export_ffn = make_action(
+            self, "Export FFN (CDS nucleotide)...", self._on_export_ffn
+        )
+        self.action_export_feature_csv = make_action(
+            self, "Export Feature Table CSV...", self._on_export_feature_csv
+        )
         self.action_exit = make_action(self, "E&xit", self._on_exit)
         for action in (
             self.action_new_project,
@@ -167,6 +187,11 @@ class MainWindow(QMainWindow):
             self.action_save_project,
             self.action_export_genbank,
             self.action_export_gff3,
+            self.action_export_nucleotide_fasta,
+            self.action_export_protein_fasta_records,
+            self.action_export_protein_fasta_cds,
+            self.action_export_ffn,
+            self.action_export_feature_csv,
             None,
             self.action_exit,
         ):
@@ -223,6 +248,11 @@ class MainWindow(QMainWindow):
         self.action_save_project.setEnabled(writable)
         self.action_export_genbank.setEnabled(has_records)
         self.action_export_gff3.setEnabled(has_records)
+        self.action_export_nucleotide_fasta.setEnabled(has_records)
+        self.action_export_protein_fasta_records.setEnabled(has_records)
+        self.action_export_protein_fasta_cds.setEnabled(has_records)
+        self.action_export_ffn.setEnabled(has_records)
+        self.action_export_feature_csv.setEnabled(has_records)
         self.action_add_feature.setEnabled(has_record and writable)
         self.action_import_fasta.setEnabled(writable)
         self.action_import_genbank.setEnabled(writable)
@@ -475,6 +505,69 @@ class MainWindow(QMainWindow):
         for warning in result.warnings:
             self._log(f"  [warning] {warning.message}")
 
+    def _on_export_nucleotide_fasta(self) -> None:
+        self._export_one_way(
+            "Export Nucleotide FASTA",
+            "FASTA (*.fasta)",
+            lambda records, features, dest: self.export_service.export_nucleotide_fasta(
+                records, dest
+            ),
+        )
+
+    def _on_export_protein_fasta_records(self) -> None:
+        self._export_one_way(
+            "Export Protein FASTA (protein records)",
+            "FASTA (*.faa)",
+            lambda records, features, dest: self.export_service.export_protein_fasta_from_records(
+                records, dest
+            ),
+        )
+
+    def _on_export_protein_fasta_cds(self) -> None:
+        self._export_one_way(
+            "Export Protein FASTA (CDS translations)",
+            "FASTA (*.faa)",
+            lambda records, features, dest: self.export_service.export_protein_fasta_from_cds(
+                records, features, dest
+            ),
+        )
+
+    def _on_export_ffn(self) -> None:
+        self._export_one_way(
+            "Export FFN",
+            "FFN (*.ffn)",
+            lambda records, features, dest: self.export_service.export_ffn(records, features, dest),
+        )
+
+    def _on_export_feature_csv(self) -> None:
+        self._export_one_way(
+            "Export Feature Table CSV",
+            "CSV (*.csv)",
+            lambda records, features, dest: self.export_service.export_feature_table_csv(
+                records, features, dest
+            ),
+        )
+
+    def _export_one_way(self, title: str, file_filter: str, run) -> None:
+        if not self._guard_project_open():
+            return
+        records = self.project_service.list_records()
+        if not records:
+            QMessageBox.information(self, title, "No records to export.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, title, "", file_filter)
+        if not path:
+            return
+        features_by_record_id = {
+            record.id: self.project_service.list_features(record.id) for record in records
+        }
+        try:
+            destination, count = run(records, features_by_record_id, Path(path))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, f"{title} Failed", str(exc))
+            return
+        self._log(f"{title}: wrote {count} record(s)/row(s) to {destination}")
+
     def _on_undo(self) -> None:
         if self.project_service.undo_stack.undo():
             self._refresh_features_only()
@@ -639,6 +732,10 @@ class MainWindow(QMainWindow):
         actions["translate_minus"] = menu.addAction("Translate (- strand)")
         menu.addSeparator()
         actions["export"] = menu.addAction("Export Selection as FASTA...")
+        actions["extract_record"] = menu.addAction("Extract Selection as New Record...")
+        actions["reverse_complement_record"] = menu.addAction(
+            "Reverse Complement Whole Record as New Record..."
+        )
 
         chosen = menu.exec(global_pos)
         if chosen is None:
@@ -687,6 +784,43 @@ class MainWindow(QMainWindow):
             if path:
                 self.sequence_ops_service.export_selection_fasta(record, start0, end0, Path(path))
                 self._log(f"Exported selection {start0 + 1}..{end0} to {path}")
+        elif key == "extract_record":
+            self._extract_selection_as_new_record(record, start0, end0)
+        elif key == "reverse_complement_record":
+            self._reverse_complement_record_as_new(record)
+
+    def _extract_selection_as_new_record(
+        self, record: SequenceRecord, start0: int, end0: int
+    ) -> None:
+        if not self._guard_project_open():
+            return
+        new_record = self.sequence_ops_service.extract_as_new_record(record, start0, end0)
+        repo = self.project_service.require_writable()
+        repo.save_record(new_record)
+        self.project_service.log_audit(
+            EventType.SEQUENCE_OPERATION,
+            new_record.id,
+            f"Extracted new record '{new_record.display_id}' from {record.display_id}:"
+            f"{start0 + 1}..{end0}",
+        )
+        self.project_service.touch()
+        self._refresh_project_explorer()
+        self._log(f"Created new record: {new_record.display_id} ({new_record.length} bp)")
+
+    def _reverse_complement_record_as_new(self, record: SequenceRecord) -> None:
+        if not self._guard_project_open():
+            return
+        new_record = self.sequence_ops_service.reverse_complement_as_new_record(record)
+        repo = self.project_service.require_writable()
+        repo.save_record(new_record)
+        self.project_service.log_audit(
+            EventType.SEQUENCE_OPERATION,
+            new_record.id,
+            f"Created reverse-complement record '{new_record.display_id}' from {record.display_id}",
+        )
+        self.project_service.touch()
+        self._refresh_project_explorer()
+        self._log(f"Created new record: {new_record.display_id} ({new_record.length} bp)")
 
     def _guard_project_open(self) -> bool:
         if not self.project_service.is_open:

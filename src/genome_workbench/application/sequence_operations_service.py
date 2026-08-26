@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from genome_workbench.domain.models import SequenceRecord
+from genome_workbench.domain.models import SequenceRecord, Topology
 from genome_workbench.domain.sequence_ops import reverse_complement, translate
 from genome_workbench.infrastructure.filesystem.atomic_write import write_atomic
+from genome_workbench.infrastructure.filesystem.checksums import sha256_of_text
 
 
 class SequenceOperationsService:
@@ -53,3 +54,48 @@ class SequenceOperationsService:
             path.write_text(content, encoding="utf-8")
 
         write_atomic(Path(destination), write_fasta)
+
+    def extract_as_new_record(
+        self,
+        record: SequenceRecord,
+        start0: int,
+        end0: int,
+        strand: int = 1,
+        new_display_id: str | None = None,
+    ) -> SequenceRecord:
+        """Non-destructive: builds a new, unpersisted record from a selection
+        of ``record`` (spec 10.1). The original record is untouched; the
+        caller (UI) persists the result via the project repository."""
+        sequence = self.get_selection(record, start0, end0)
+        if strand == -1:
+            sequence = reverse_complement(sequence)
+        display_id = new_display_id or f"{record.display_id}_{start0 + 1}-{end0}"
+        strand_suffix = "(-)" if strand == -1 else ""
+        return SequenceRecord(
+            display_id=display_id,
+            name=display_id,
+            description=f"Extracted from {record.display_id}:{start0 + 1}-{end0}{strand_suffix}",
+            molecule_type=record.molecule_type,
+            topology=Topology.LINEAR,
+            sequence=sequence,
+            checksum_sha256=sha256_of_text(sequence),
+            source_format=record.source_format,
+        )
+
+    def reverse_complement_as_new_record(
+        self, record: SequenceRecord, new_display_id: str | None = None
+    ) -> SequenceRecord:
+        """Non-destructive: builds a new, unpersisted record holding the
+        reverse complement of the whole ``record`` (spec 10.1)."""
+        sequence = reverse_complement(record.sequence)
+        display_id = new_display_id or f"{record.display_id}_rc"
+        return SequenceRecord(
+            display_id=display_id,
+            name=display_id,
+            description=f"Reverse complement of {record.display_id}",
+            molecule_type=record.molecule_type,
+            topology=record.topology,
+            sequence=sequence,
+            checksum_sha256=sha256_of_text(sequence),
+            source_format=record.source_format,
+        )

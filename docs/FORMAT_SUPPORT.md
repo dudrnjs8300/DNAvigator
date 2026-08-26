@@ -20,7 +20,13 @@ GTF/EMBL/BED는 P0/P1 범위 밖이며 지원하지 않는다.
 |---|---|---|
 | GenBank | 지원 | `write_genbank`. Export 전 temp file에 쓴 뒤 reimport하여 semantic diff를 검사하고, 오류가 없을 때만 atomic replace한다(`application/export_service.py`). |
 | GFF3 | 지원 | `write_gff3`. `embed_fasta=True`(단일 파일, `##FASTA` 포함)와 `embed_fasta=False`(annotation-only, 별도 FASTA) 모두 지원, 동일한 semantic round-trip 검증을 거친다. |
-| Nucleotide/Protein FASTA, FFN, feature table CSV/TSV | 미지원 | Phase 7 예정. |
+| Nucleotide FASTA | 지원 | `export_formats.write_nucleotide_fasta`. Protein-type record는 자동 제외됨. |
+| Protein FASTA (record) | 지원 | `write_protein_fasta_from_records`. Molecule type이 protein인 record만 그대로 내보낸다. |
+| Protein FASTA (CDS translation) | 지원 | `write_protein_fasta_from_cds`. 모든 CDS feature를 번역해 header에 locus_tag/gene, 좌표, strand, product를 포함한다. |
+| FFN (CDS nucleotide) | 지원 | `write_ffn`. Strand와 compound location이 적용된 생물학적 서열. |
+| Feature table CSV/TSV | 지원 | `write_feature_table_csv`. record ID, feature ID, type, 좌표, strand, 주요 qualifier, provenance ID 포함. |
+
+FASTA/FFN/CSV export는 GenBank/GFF3와 달리 대응하는 import adapter가 없는 단방향(one-way) export이므로 semantic round-trip 검증은 적용되지 않는다(atomic write만 보장).
 
 ## 보존되는 것 (검증됨)
 

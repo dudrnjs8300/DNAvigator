@@ -14,6 +14,13 @@ from genome_workbench.application.project_service import ProjectService
 from genome_workbench.domain.events import EventType
 from genome_workbench.domain.models import Feature, SequenceRecord
 from genome_workbench.infrastructure.filesystem.atomic_write import write_atomic
+from genome_workbench.infrastructure.formats.export_formats import (
+    write_feature_table_csv,
+    write_ffn,
+    write_nucleotide_fasta,
+    write_protein_fasta_from_cds,
+    write_protein_fasta_from_records,
+)
 from genome_workbench.infrastructure.formats.genbank_adapter import read_genbank, write_genbank
 from genome_workbench.infrastructure.formats.gff3_adapter import read_gff3, write_gff3
 from genome_workbench.infrastructure.formats.semantic_compare import (
@@ -123,3 +130,73 @@ class ExportService:
                 f"Exported {len(records)} record(s) to GFF3: {destination.name}",
             )
         return ExportResult(destination=destination, diffs=captured_diffs)
+
+    # -- One-way export formats (no matching import adapter / round-trip check) ------
+
+    def export_nucleotide_fasta(
+        self, records: list[SequenceRecord], destination: Path
+    ) -> tuple[Path, int]:
+        return self._export_simple(
+            destination, lambda p: write_nucleotide_fasta(records, p), "FASTA"
+        )
+
+    def export_protein_fasta_from_records(
+        self, records: list[SequenceRecord], destination: Path
+    ) -> tuple[Path, int]:
+        return self._export_simple(
+            destination, lambda p: write_protein_fasta_from_records(records, p), "protein FASTA"
+        )
+
+    def export_protein_fasta_from_cds(
+        self,
+        records: list[SequenceRecord],
+        features_by_record_id: dict[str, list[Feature]],
+        destination: Path,
+        genetic_code: int = 11,
+    ) -> tuple[Path, int]:
+        return self._export_simple(
+            destination,
+            lambda p: write_protein_fasta_from_cds(
+                records, features_by_record_id, p, genetic_code=genetic_code
+            ),
+            "CDS translation FASTA",
+        )
+
+    def export_ffn(
+        self,
+        records: list[SequenceRecord],
+        features_by_record_id: dict[str, list[Feature]],
+        destination: Path,
+    ) -> tuple[Path, int]:
+        return self._export_simple(
+            destination, lambda p: write_ffn(records, features_by_record_id, p), "FFN"
+        )
+
+    def export_feature_table_csv(
+        self,
+        records: list[SequenceRecord],
+        features_by_record_id: dict[str, list[Feature]],
+        destination: Path,
+    ) -> tuple[Path, int]:
+        return self._export_simple(
+            destination,
+            lambda p: write_feature_table_csv(records, features_by_record_id, p),
+            "feature table CSV",
+        )
+
+    def _export_simple(self, destination: Path, writer, label: str) -> tuple[Path, int]:
+        destination = Path(destination)
+        count_holder: list[int] = []
+
+        def write_fn(temp_path: Path) -> None:
+            count_holder.append(writer(temp_path))
+
+        write_atomic(destination, write_fn)
+        count = count_holder[0] if count_holder else 0
+        if self._project_service.is_open:
+            self._project_service.log_audit(
+                EventType.EXPORT,
+                "",
+                f"Exported {count} record(s)/row(s) to {label}: {destination.name}",
+            )
+        return destination, count

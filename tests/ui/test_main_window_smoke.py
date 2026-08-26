@@ -173,8 +173,9 @@ def test_export_gff3_and_import_gff3_menu_actions(qtbot, tmp_path, monkeypatch):
 
 
 def test_open_locked_project_offers_read_only_via_ui(qtbot, tmp_path, monkeypatch):
-    from genome_workbench.application.project_service import ProjectService
     from PySide6.QtWidgets import QMessageBox
+
+    from genome_workbench.application.project_service import ProjectService
 
     project_path = tmp_path / "locked" / "project.gwbproj"
     other_instance = ProjectService()
