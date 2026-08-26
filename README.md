@@ -1,103 +1,57 @@
 # GenomeWorkbench
 
-로컬(offline) Windows 데스크톱용 genome sequence visualization 및 annotation workbench.
-FASTA/GenBank/GFF3 계열 파일을 열어 sequence와 annotation을 보고, 수동 또는 로컬 BLAST 근거로
-annotation을 추가·수정한 뒤 표준 형식으로 내보낼 수 있다. 사용자의 sequence/annotation을
-외부 서버로 전송하지 않는다.
+**DNA/단백질 서열(생명체의 유전 정보)을 화면에서 보고, 각 부분이 무슨 역할을 하는지 표시하고
+저장할 수 있는 Windows 프로그램**이에요. 인터넷 연결 없이 내 컴퓨터에서만 동작하고, 내가 다루는
+서열 정보를 외부 서버로 보내지 않아요.
 
-> **개발 상태**: Phase 1 (FASTA → 수동 annotation → project → GenBank export/reimport 수직 슬라이스) 완료.
-> 전체 로드맵은 [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md), 현재 진행 상황은 [`PROGRESS.md`](PROGRESS.md) 참고.
+이런 분들이 쓰는 프로그램이에요: 유전체(genome) 데이터를 열어서 눈으로 확인하고, 특정 구간에
+이름표(annotation)를 붙이고 싶은 연구자/학생.
 
-## 현재 지원 기능 (Phase 1 기준)
+## 설치하는 방법 (딱 3단계)
 
-- Nucleotide/protein FASTA import (gzip 지원, 확장자 무관 sniffing)
-- GenBank import/export (single/multi-record, compound/reverse-strand location, unknown qualifier 보존)
-- 수동 feature 생성 (좌표/strand/type/qualifier, translation preview, validation)
-- Project 저장/재오픈 (SQLite 기반 `.gwbproj`)
-- Undo/redo
-- Export 전/후 semantic round-trip 검증, atomic write (원본 파일 보호)
-- 진단용 CLI: `--version`, `--diagnostics`, `--self-test`, `--smoke-test`
+1. 아래 링크를 눌러서 **최신 버전 다운로드 페이지**로 이동하세요.
 
-아직 없는 기능은 [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md)에 정리되어 있다
-(GFF3, genome map 시각화, BLAST, autosave/recovery 등은 이후 phase).
+   👉 **[최신 버전 다운로드](https://github.com/dudrnjs8300/genome-workbench/releases/latest)**
 
-## 설치 (일반 사용자)
+2. 그 페이지에서 파일 이름이 `GenomeWorkbench-...-win-x64-setup.exe`인 파일을 클릭해서 내려받으세요.
+   (파일 이름에 `setup`이 들어간 게 설치 파일이에요.)
 
-Python이나 개발 도구 설치 없이, 인스톨러 하나로 설치해서 쓸 수 있다.
+3. 다운로드된 파일을 **더블클릭**하세요. 몇 번 "다음" 버튼만 누르면 설치가 끝나요.
+   - 관리자 비밀번호 같은 건 필요 없어요.
+   - 설치가 끝나면 시작 메뉴에 "GenomeWorkbench"가 생겨요. 그걸 누르면 실행돼요.
 
-1. GitHub Actions의 최신 `windows-release` 실행 결과에서 **`GenomeWorkbench-installer`** artifact를 내려받는다
-   (저장소의 **Actions** 탭 → 가장 최근 `windows-release` 실행 → Artifacts).
-2. 압축을 풀면 나오는 `GenomeWorkbench-X.Y.Z-win-x64-setup.exe`를 실행한다.
-   - 관리자 권한이 필요 없다(사용자 계정 안에만 설치됨).
-   - 코드 서명 인증서가 없어 Windows Defender/SmartScreen이 경고를 띄울 수 있다 — "추가 정보" → "실행"으로 진행하면 된다(`docs/LICENSING.md` 참고).
-3. 설치 후 시작 메뉴에서 GenomeWorkbench를 실행한다.
+### 설치할 때 이상한 경고창이 떠요!
 
-이 설치 파일은 CI(`windows-release.yml`)에서 매번 실제로 빌드되고, 처음부터 아무것도 설치되어 있지 않은
-clean Windows 러너에서 실제로 silent 설치 → `--self-test` → 시작 메뉴 바로가기 확인 → silent 제거까지
-자동으로 검증된 뒤에만 artifact로 올라간다.
+Windows가 "**이 앱이 PC에 손상을 일으킬 수 있습니다**" 또는 파란색 "**Windows의 PC 보호**" 화면을
+보여줄 수 있어요. 놀라지 않아도 돼요 — 이 프로그램에 유료 인증서가 없어서 뜨는 정상적인 경고예요
+(바이러스가 아니에요). 이럴 때는:
 
-BLAST 검색 기능을 쓰려면 NCBI BLAST+가 별도로 필요하지만, 앱 내 **BLAST > BLAST Setup...** 대화상자에서
-"Download & Install BLAST+" 버튼으로 자동 설치할 수 있다(`docs/BLAST_SETUP.md` 참고).
+1. 경고창에서 "**추가 정보**"를 클릭하세요.
+2. 그러면 "**실행**" 버튼이 나타나요. 그걸 누르면 설치가 계속 진행돼요.
 
-## 개발자용: 소스에서 실행/빌드
+## 처음 써보기
 
-아래는 이 저장소를 직접 수정하거나 기여하려는 개발자를 위한 절차다. 그냥 프로그램을 쓰기만 하려면
-위 "설치 (일반 사용자)"만 보면 된다.
+1. GenomeWorkbench를 실행하면 빈 화면이 나와요.
+2. 왼쪽 위 메뉴에서 **File > New Project**로 새 작업 파일을 만드세요.
+3. **File > Import > FASTA...** (또는 GenBank, GFF3)로 내가 가진 서열 파일을 불러오세요.
+4. 화면 가운데에 서열이 그림으로 나타나요. 마우스로 드래그해서 구간을 고르고 오른쪽 버튼을
+   누르면 그 구간에 이름표(annotation)를 붙일 수 있어요.
 
-### 개발 환경 빠른 시작
+더 자세한 사용법(BLAST 검색, 폴더 정리, 저장/내보내기 등)은
+**[사용자 가이드](docs/USER_GUIDE_KO.md)**에 한국어로 정리되어 있어요.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\bootstrap_dev.ps1
-.venv\Scripts\Activate.ps1
-python -m genome_workbench
-```
+## 궁금한 점이 있어요
 
-### 테스트 / 품질 검사
+- 아직 지원하지 않는 기능이나 알려진 문제는 [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md)에 정리되어 있어요.
+- BLAST(서열 검색 기능) 설치가 어렵다면 [`docs/BLAST_SETUP.md`](docs/BLAST_SETUP.md)를 보세요. 프로그램
+  안의 **BLAST > BLAST Setup...** 메뉴에서 "Download & Install BLAST+" 버튼 하나로 자동 설치할 수도 있어요.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\run_checks.ps1
-```
+## 개발자이신가요?
 
-개별 실행:
-
-```powershell
-python -m ruff format --check src tests
-python -m ruff check src tests
-python -m mypy src/genome_workbench
-$env:QT_QPA_PLATFORM = "offscreen"; python -m pytest tests -q
-```
-
-### Windows 실행파일/인스톨러 직접 빌드
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
-```
-
-`dist/GenomeWorkbench/GenomeWorkbench.exe`가 생성되며, 스크립트가 자동으로 packaged
-`--self-test`/`--smoke-test`까지 실행해 검증한다.
-
-인스톨러(.exe)까지 만들려면 [Inno Setup 6](https://jrsoftware.org/isinfo.php)를 설치한 뒤:
-
-```powershell
-iscc installer\genome_workbench.iss
-```
-
-`release/GenomeWorkbench-0.1.0-win-x64-setup.exe`가 생성된다. 자세한 내용은
-[`installer/genome_workbench.iss`](installer/genome_workbench.iss)와 `docs/RELEASE_TEST_REPORT.md` 참고.
-
-## 진단 CLI
-
-GUI 프로그램이지만 CI/장애 진단을 위해 command-line option을 제공한다(GUI와 동일한 application
-service를 사용한다):
-
-```
-GenomeWorkbench.exe --version
-GenomeWorkbench.exe --diagnostics
-GenomeWorkbench.exe --self-test
-GenomeWorkbench.exe --smoke-test <fixture-directory> <output-directory>
-```
+이 저장소를 직접 수정하거나 소스에서 빌드하려면 **[개발자 가이드](docs/DEVELOPER.md)**를 보세요.
+(일반 사용자는 볼 필요 없어요 — 위 "설치하는 방법"이면 충분해요.)
 
 ## License
 
-MIT (`LICENSE`). Third-party dependency license는 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md),
-BLAST+ 재배포 정책은 [`docs/LICENSING.md`](docs/LICENSING.md) 참고.
+MIT (`LICENSE`). 함께 포함된 다른 소프트웨어의 라이선스는 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md),
+BLAST+ 재배포 정책은 [`docs/LICENSING.md`](docs/LICENSING.md)에서 확인할 수 있어요.

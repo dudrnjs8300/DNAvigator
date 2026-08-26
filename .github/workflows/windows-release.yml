@@ -6,6 +6,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -129,4 +132,36 @@ jobs:
         with:
           name: GenomeWorkbench-installer
           path: release\GenomeWorkbench-*-win-x64-setup.exe
+
+      - name: Publish GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $setup = Get-ChildItem release\GenomeWorkbench-*-win-x64-setup.exe | Select-Object -First 1
+
+          $notes = @"
+          # GenomeWorkbench $tag (Windows x64)
+
+          ## 설치 방법
+          아래 첨부 파일 중 **$($setup.Name)** 를 내려받아 더블클릭하세요.
+          - 관리자 권한이 필요 없습니다.
+          - Windows에서 "이 앱이 PC에 손상을 일으킬 수 있습니다" 같은 SmartScreen 경고가 뜨면, "추가 정보" -> "실행"을 누르면 설치가 진행됩니다(서명 인증서가 없어서 뜨는 정상적인 경고입니다).
+
+          압축 없이 그냥 실행만 하고 싶다면 portable ZIP(GenomeWorkbench-portable-win-x64.zip)을 받아 원하는 폴더에 풀어서 GenomeWorkbench.exe를 바로 실행해도 됩니다.
+
+          ## 이 빌드는 이렇게 검증되었습니다
+          아무것도 미리 깔려 있지 않은 깨끗한 Windows 환경(GitHub Actions runner)에서, 이 설치 파일로 실제로 설치 -> 실행 확인 -> 제거까지 자동으로 테스트를 통과한 뒤에만 올라갑니다.
+
+          더 자세한 사용법은 저장소의 README와 docs/USER_GUIDE_KO.md를 참고하세요.
+          "@
+
+          Set-Content -Path release_notes.md -Value $notes -Encoding utf8
+
+          gh release create $tag `
+            "$($setup.FullName)" `
+            "GenomeWorkbench-portable-win-x64.zip" `
+            --title "GenomeWorkbench $tag" `
+            --notes-file release_notes.md
 
