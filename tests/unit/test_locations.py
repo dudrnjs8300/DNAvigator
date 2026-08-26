@@ -3,6 +3,7 @@ import pytest
 from genome_workbench.domain.locations import (
     LocationError,
     LocationPart,
+    build_ordered_parts_from_display_segments,
     extract_sequence,
     is_origin_spanning,
     order_parts_for_strand,
@@ -132,3 +133,42 @@ def test_extract_origin_spanning_minus_strand_uses_reversed_biological_order():
     assert [(p.start0, p.end0) for p in plus_order_parts] == [(9700, 10000), (0, 500)]
     minus_order_parts = order_parts_for_strand(plus_order_parts, strand=-1)
     assert [(p.start0, p.end0) for p in minus_order_parts] == [(0, 500), (9700, 10000)]
+
+
+def test_build_ordered_parts_plain_pairs_default_to_not_fuzzy():
+    parts = build_ordered_parts_from_display_segments([(101, 200)], strand=1)
+    assert parts[0].fuzzy_start is False
+    assert parts[0].fuzzy_end is False
+
+
+def test_build_ordered_parts_preserves_fuzzy_flags_per_segment():
+    parts = build_ordered_parts_from_display_segments(
+        [(101, 200, True, False), (301, 400, False, True)], strand=1
+    )
+    assert parts[0].fuzzy_start is True
+    assert parts[0].fuzzy_end is False
+    assert parts[1].fuzzy_start is False
+    assert parts[1].fuzzy_end is True
+
+
+def test_build_ordered_parts_fuzzy_flags_survive_minus_strand_reordering():
+    # minus strand reverses list order but each flag must stay attached to
+    # its own segment's own start0/end0, not swap meaning
+    parts = build_ordered_parts_from_display_segments(
+        [(101, 200, True, False), (301, 400, False, True)], strand=-1
+    )
+    ordered_by_index = sorted(parts, key=lambda p: p.order_index)
+    # biological order is reversed (400..301 first), but each part keeps its
+    # own fuzzy flags
+    first, second = ordered_by_index
+    assert (first.start0, first.end0) == (300, 400)
+    assert first.fuzzy_start is False
+    assert first.fuzzy_end is True
+    assert (second.start0, second.end0) == (100, 200)
+    assert second.fuzzy_start is True
+    assert second.fuzzy_end is False
+
+
+def test_build_ordered_parts_rejects_empty_segments():
+    with pytest.raises(ValueError, match="at least one segment"):
+        build_ordered_parts_from_display_segments([], strand=1)

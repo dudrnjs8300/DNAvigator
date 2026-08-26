@@ -21,6 +21,7 @@ in plain ascending genomic order.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -147,23 +148,38 @@ def order_parts_for_strand(
 
 
 def build_ordered_parts_from_display_segments(
-    segments_1based: list[tuple[int, int]], strand: int | None
+    segments_1based: Sequence[tuple[int, int] | tuple[int, int, bool, bool]],
+    strand: int | None,
 ) -> list[LocationPart]:
-    """Turns user-entered (start, end) 1-based segment pairs -- in any order --
-    into properly ordered LocationParts for a compound feature.
+    """Turns user-entered 1-based segments -- in any order -- into properly
+    ordered LocationParts for a compound feature.
 
-    Shared by every UI that lets a user type/edit join-feature segments
-    (AddFeatureDialog, InspectorDock): segments are sorted ascending by
-    genomic start first, then :func:`order_parts_for_strand` derives the
-    correct biological order_index from strand, so entry order never matters.
+    Each segment is either a plain ``(start, end)`` pair or ``(start, end,
+    fuzzy_start, fuzzy_end)`` if it has a GenBank ``<``/``>`` fuzzy boundary
+    (fuzzy_start = "starts before start, exact position unknown"; fuzzy_end =
+    "extends past end, exact position unknown"). Shared by every UI that lets
+    a user type/edit join-feature segments (AddFeatureDialog, InspectorDock):
+    segments are sorted ascending by genomic start first, then
+    :func:`order_parts_for_strand` derives the correct biological order_index
+    from strand, so entry order never matters.
     """
     if not segments_1based:
         raise CoordinateError("a compound feature needs at least one segment")
-    ascending = sorted(segments_1based, key=lambda pair: pair[0])
+    ascending = sorted(segments_1based, key=lambda seg: seg[0])
     plain_parts = []
-    for start, end in ascending:
+    for seg in ascending:
+        start, end = seg[0], seg[1]
+        fuzzy_start, fuzzy_end = (seg[2], seg[3]) if len(seg) == 4 else (False, False)
         interval = Interval0.from_display(start, end)
-        plain_parts.append(LocationPart(start0=interval.start0, end0=interval.end0, order_index=0))
+        plain_parts.append(
+            LocationPart(
+                start0=interval.start0,
+                end0=interval.end0,
+                order_index=0,
+                fuzzy_start=fuzzy_start,
+                fuzzy_end=fuzzy_end,
+            )
+        )
     return order_parts_for_strand(plain_parts, strand)
 
 

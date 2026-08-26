@@ -8,6 +8,7 @@ is computed from strand via AnnotationService (see docs/DECISIONS.md D-002).
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -73,8 +74,10 @@ class AddFeatureDialog(QDialog):
         self._join_checkbox = QCheckBox("Multiple segments (join)")
         self._join_checkbox.toggled.connect(self._on_join_toggled)
 
-        self._segments_table = QTableWidget(0, 2)
-        self._segments_table.setHorizontalHeaderLabels(["Start (1-based)", "End (1-based)"])
+        self._segments_table = QTableWidget(0, 4)
+        self._segments_table.setHorizontalHeaderLabels(
+            ["Start (1-based)", "End (1-based)", "Fuzzy start (<)", "Fuzzy end (>)"]
+        )
         self._segments_table.setMaximumHeight(120)
         add_segment_button = QPushButton("Add Segment")
         remove_segment_button = QPushButton("Remove Selected")
@@ -85,11 +88,18 @@ class AddFeatureDialog(QDialog):
         segment_buttons.addWidget(remove_segment_button)
         segment_buttons.addStretch()
 
+        self._fuzzy_start_check = QCheckBox("Fuzzy start (<) -- exact start unknown/beyond view")
+        self._fuzzy_end_check = QCheckBox("Fuzzy end (>) -- exact end unknown/beyond view")
+        self._fuzzy_start_check.toggled.connect(self._update_preview)
+        self._fuzzy_end_check.toggled.connect(self._update_preview)
+
         self._simple_location_widget = QWidget()
         simple_form = QFormLayout(self._simple_location_widget)
         simple_form.setContentsMargins(0, 0, 0, 0)
         simple_form.addRow("Start (1-based inclusive)", self._start_spin)
+        simple_form.addRow("", self._fuzzy_start_check)
         simple_form.addRow("End (1-based inclusive)", self._end_spin)
+        simple_form.addRow("", self._fuzzy_end_check)
 
         self._compound_location_widget = QWidget()
         compound_layout = QVBoxLayout(self._compound_location_widget)
@@ -150,11 +160,26 @@ class AddFeatureDialog(QDialog):
         self._location_stack.setCurrentIndex(1 if checked else 0)
         self._update_preview()
 
-    def _add_segment_row(self, start_1based: int, end_1based: int) -> None:
+    @staticmethod
+    def _make_checkable_item(checked: bool) -> QTableWidgetItem:
+        item = QTableWidgetItem()
+        item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        return item
+
+    def _add_segment_row(
+        self,
+        start_1based: int,
+        end_1based: int,
+        fuzzy_start: bool = False,
+        fuzzy_end: bool = False,
+    ) -> None:
         row = self._segments_table.rowCount()
         self._segments_table.insertRow(row)
         self._segments_table.setItem(row, 0, QTableWidgetItem(str(start_1based)))
         self._segments_table.setItem(row, 1, QTableWidgetItem(str(end_1based)))
+        self._segments_table.setItem(row, 2, self._make_checkable_item(fuzzy_start))
+        self._segments_table.setItem(row, 3, self._make_checkable_item(fuzzy_end))
 
     def _on_add_segment(self) -> None:
         self._add_segment_row(1, min(self._record.length, 1))
@@ -169,11 +194,13 @@ class AddFeatureDialog(QDialog):
     def _current_strand(self) -> int:
         return 1 if self._strand_combo.currentText() == "+" else -1
 
-    def _current_segments(self) -> list[tuple[int, int]] | None:
-        segments: list[tuple[int, int]] = []
+    def _current_segments(self) -> list[tuple[int, int, bool, bool]] | None:
+        segments: list[tuple[int, int, bool, bool]] = []
         for row in range(self._segments_table.rowCount()):
             start_item = self._segments_table.item(row, 0)
             end_item = self._segments_table.item(row, 1)
+            fuzzy_start_item = self._segments_table.item(row, 2)
+            fuzzy_end_item = self._segments_table.item(row, 3)
             try:
                 start = int(start_item.text()) if start_item else 0
                 end = int(end_item.text()) if end_item else 0
@@ -181,7 +208,13 @@ class AddFeatureDialog(QDialog):
                 return None
             if start < 1 or end < start:
                 return None
-            segments.append((start, end))
+            fuzzy_start = bool(
+                fuzzy_start_item and fuzzy_start_item.checkState() == Qt.CheckState.Checked
+            )
+            fuzzy_end = bool(
+                fuzzy_end_item and fuzzy_end_item.checkState() == Qt.CheckState.Checked
+            )
+            segments.append((start, end, fuzzy_start, fuzzy_end))
         return segments or None
 
     def _is_join_mode(self) -> bool:
@@ -217,7 +250,13 @@ class AddFeatureDialog(QDialog):
                     self._preview_text.setPlainText("End must be >= start.")
                     return
                 preview = self._annotation_service.preview_simple_feature(
-                    self._record, start, end, strand, feature_type
+                    self._record,
+                    start,
+                    end,
+                    strand,
+                    feature_type,
+                    fuzzy_start=self._fuzzy_start_check.isChecked(),
+                    fuzzy_end=self._fuzzy_end_check.isChecked(),
                 )
         except Exception as exc:  # noqa: BLE001 - surfaced to the user, not swallowed
             self._preview_text.setPlainText(f"Preview failed: {exc}")
@@ -255,6 +294,13 @@ class AddFeatureDialog(QDialog):
             if end < start:
                 return
             self.created_feature = self._annotation_service.create_simple_feature(
-                self._record, start, end, strand, feature_type, qualifiers
+                self._record,
+                start,
+                end,
+                strand,
+                feature_type,
+                qualifiers,
+                fuzzy_start=self._fuzzy_start_check.isChecked(),
+                fuzzy_end=self._fuzzy_end_check.isChecked(),
             )
         self.accept()

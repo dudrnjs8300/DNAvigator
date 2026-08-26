@@ -74,7 +74,8 @@ Circular Map에서도 마우스만으로 조작할 수 있다:
    - **Start/End**: 드래그한 좌표가 이미 채워져 있다(1-based).
    - **Strand**: +/-
    - **Feature type**: CDS, gene, tRNA 등(직접 입력도 가능)
-   - **Multiple segments (join)** 체크박스: 체크하면 여러 구간을 입력해 하나의 compound(join) feature를 만들 수 있다(intron이 있는 유전자 등). 구간을 어떤 순서로 입력해도 strand에 맞는 생물학적 순서로 자동 정렬된다.
+   - **Multiple segments (join)** 체크박스: 체크하면 여러 구간을 입력해 하나의 compound(join) feature를 만들 수 있다(intron이 있는 유전자 등). 구간을 어떤 순서로 입력해도 strand에 맞는 생물학적 순서로 자동 정렬된다. 이때는 각 구간마다 **Fuzzy start (<) / Fuzzy end (>)** 체크박스가 표에 함께 나타난다.
+   - **Fuzzy start (<) / Fuzzy end (>)** 체크박스(join이 아닐 때는 좌표 옆에 표시됨): GenBank의 `<`/`>` 표기처럼 "정확한 시작/끝 위치를 모르거나 표시된 좌표 너머까지 이어진다"는 뜻이다. contig 경계에서 잘린 유전자 등에 사용한다.
    - gene/product/note/transl_table 입력
    - **Preview** 버튼으로 길이, translation, 시작/종료 코돈, 내부 stop codon 여부를 미리 확인한다.
 4. **OK**를 누르면 즉시 저장된다(별도의 "Save" 없이도 project 파일에 즉시 기록된다).
@@ -85,7 +86,8 @@ Circular Map에서도 마우스만으로 조작할 수 있다:
 2. 오른쪽 **Inspector**에 type, strand, 좌표, 공통 qualifier(gene/locus_tag/product/note/db_xref/inference), 추출된 nucleotide/translation, validation 경고, provenance가 표시된다.
 3. 값을 직접 수정한다. 공통 6개 필드 외의 qualifier는 **All other qualifiers** 표에서 **Add Qualifier / Remove Selected**로 자유롭게 추가·삭제한다(multi-value 가능).
 4. **여러 구간(join/compound) feature**를 열면 **Multiple segments (join)** 체크박스가 자동으로 켜지고 구간 목록이 표에 나타난다. 표에서 좌표를 직접 수정하거나 **Add Segment/Remove Selected**로 구간을 추가/삭제할 수 있다 — 어떤 순서로 입력해도 strand에 맞게 자동 정렬된다. 체크박스를 끄면 단일 구간으로 축소된다(의도적으로 그렇게 하려는 경우에만 사용).
-5. **Apply**를 누르면 저장되고, **Revert**를 누르면 마지막 저장 상태로 되돌린다.
+5. **Fuzzy start (<) / Fuzzy end (>)** 체크박스로 기존 feature의 fuzzy 경계도 켜고 끌 수 있다(join 모드에서는 구간별로 표의 체크박스로 조정).
+6. **Apply**를 누르면 저장되고, **Revert**를 누르면 마지막 저장 상태로 되돌린다.
 
 ## 8. 선택 영역으로 할 수 있는 것 (우클릭 메뉴)
 

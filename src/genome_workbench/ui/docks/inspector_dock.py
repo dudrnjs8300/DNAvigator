@@ -12,7 +12,7 @@ ever built a 1-part SIMPLE feature, regardless of what was selected).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -80,8 +80,10 @@ class InspectorDock(QDockWidget):
         self._join_checkbox = QCheckBox("Multiple segments (join)")
         self._join_checkbox.toggled.connect(self._on_join_toggled)
 
-        self._segments_table = QTableWidget(0, 2)
-        self._segments_table.setHorizontalHeaderLabels(["Start (1-based)", "End (1-based)"])
+        self._segments_table = QTableWidget(0, 4)
+        self._segments_table.setHorizontalHeaderLabels(
+            ["Start (1-based)", "End (1-based)", "Fuzzy start (<)", "Fuzzy end (>)"]
+        )
         self._segments_table.setMaximumHeight(120)
         self._segments_table.itemChanged.connect(self._refresh_preview)
         add_segment_button = QPushButton("Add Segment")
@@ -93,11 +95,18 @@ class InspectorDock(QDockWidget):
         segment_buttons.addWidget(remove_segment_button)
         segment_buttons.addStretch()
 
+        self._fuzzy_start_check = QCheckBox("Fuzzy start (<) -- exact start unknown/beyond view")
+        self._fuzzy_end_check = QCheckBox("Fuzzy end (>) -- exact end unknown/beyond view")
+        self._fuzzy_start_check.toggled.connect(self._refresh_preview)
+        self._fuzzy_end_check.toggled.connect(self._refresh_preview)
+
         self._simple_location_widget = QWidget()
         simple_form = QFormLayout(self._simple_location_widget)
         simple_form.setContentsMargins(0, 0, 0, 0)
         simple_form.addRow("Start (1-based inclusive)", self._start_spin)
+        simple_form.addRow("", self._fuzzy_start_check)
         simple_form.addRow("End (1-based inclusive)", self._end_spin)
+        simple_form.addRow("", self._fuzzy_end_check)
 
         self._compound_location_widget = QWidget()
         compound_layout = QVBoxLayout(self._compound_location_widget)
@@ -192,11 +201,26 @@ class InspectorDock(QDockWidget):
         self._location_stack.setCurrentIndex(1 if checked else 0)
         self._refresh_preview()
 
-    def _add_segment_row(self, start_1based: int, end_1based: int) -> None:
+    @staticmethod
+    def _make_checkable_item(checked: bool) -> QTableWidgetItem:
+        item = QTableWidgetItem()
+        item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        return item
+
+    def _add_segment_row(
+        self,
+        start_1based: int,
+        end_1based: int,
+        fuzzy_start: bool = False,
+        fuzzy_end: bool = False,
+    ) -> None:
         row = self._segments_table.rowCount()
         self._segments_table.insertRow(row)
         self._segments_table.setItem(row, 0, QTableWidgetItem(str(start_1based)))
         self._segments_table.setItem(row, 1, QTableWidgetItem(str(end_1based)))
+        self._segments_table.setItem(row, 2, self._make_checkable_item(fuzzy_start))
+        self._segments_table.setItem(row, 3, self._make_checkable_item(fuzzy_end))
 
     def _on_add_segment(self) -> None:
         default_end = min(self._record.length, 1) if self._record is not None else 1
@@ -210,11 +234,13 @@ class InspectorDock(QDockWidget):
                 self._segments_table.removeRow(row)
         self._refresh_preview()
 
-    def _current_segments(self) -> list[tuple[int, int]] | None:
-        segments: list[tuple[int, int]] = []
+    def _current_segments(self) -> list[tuple[int, int, bool, bool]] | None:
+        segments: list[tuple[int, int, bool, bool]] = []
         for row in range(self._segments_table.rowCount()):
             start_item = self._segments_table.item(row, 0)
             end_item = self._segments_table.item(row, 1)
+            fuzzy_start_item = self._segments_table.item(row, 2)
+            fuzzy_end_item = self._segments_table.item(row, 3)
             try:
                 start = int(start_item.text()) if start_item else 0
                 end = int(end_item.text()) if end_item else 0
@@ -222,7 +248,13 @@ class InspectorDock(QDockWidget):
                 return None
             if start < 1 or end < start:
                 return None
-            segments.append((start, end))
+            fuzzy_start = bool(
+                fuzzy_start_item and fuzzy_start_item.checkState() == Qt.CheckState.Checked
+            )
+            fuzzy_end = bool(
+                fuzzy_end_item and fuzzy_end_item.checkState() == Qt.CheckState.Checked
+            )
+            segments.append((start, end, fuzzy_start, fuzzy_end))
         return segments or None
 
     def show_record(self, record: SequenceRecord) -> None:
@@ -268,6 +300,16 @@ class InspectorDock(QDockWidget):
         self._start_spin.blockSignals(False)
         self._end_spin.blockSignals(False)
 
+        self._fuzzy_start_check.blockSignals(True)
+        self._fuzzy_end_check.blockSignals(True)
+        # only meaningful for a genuine single-part feature; multi-part
+        # features have no single "the" start/end to mark fuzzy here (that's
+        # per-segment, handled in the segments table below)
+        self._fuzzy_start_check.setChecked(len(feature.parts) == 1 and feature.parts[0].fuzzy_start)
+        self._fuzzy_end_check.setChecked(len(feature.parts) == 1 and feature.parts[0].fuzzy_end)
+        self._fuzzy_start_check.blockSignals(False)
+        self._fuzzy_end_check.blockSignals(False)
+
         is_join = len(feature.parts) > 1
         self._join_checkbox.blockSignals(True)
         self._join_checkbox.setChecked(is_join)
@@ -281,7 +323,7 @@ class InspectorDock(QDockWidget):
         # segment entry order never matters (Apply re-derives order_index).
         for part in sorted(feature.parts, key=lambda p: p.start0):
             part_start_disp, part_end_disp = display_from_internal(part.start0, part.end0)
-            self._add_segment_row(part_start_disp, part_end_disp)
+            self._add_segment_row(part_start_disp, part_end_disp, part.fuzzy_start, part.fuzzy_end)
         self._segments_table.blockSignals(False)
 
         for key, edit in self._qualifier_edits.items():
@@ -320,7 +362,14 @@ class InspectorDock(QDockWidget):
         start0, end0 = self._start_spin.value() - 1, self._end_spin.value()
         if end0 <= start0:
             return None
-        return [LocationPart(start0=start0, end0=end0, order_index=0)], LocationOperator.SIMPLE
+        part = LocationPart(
+            start0=start0,
+            end0=end0,
+            order_index=0,
+            fuzzy_start=self._fuzzy_start_check.isChecked(),
+            fuzzy_end=self._fuzzy_end_check.isChecked(),
+        )
+        return [part], LocationOperator.SIMPLE
 
     def _refresh_preview(self) -> None:
         if self._feature is None or self._record is None:

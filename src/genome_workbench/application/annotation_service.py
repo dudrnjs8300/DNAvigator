@@ -7,6 +7,7 @@ stored internally is 0-based half-open.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from genome_workbench.application.commands import (
@@ -49,9 +50,17 @@ class AnnotationService:
         strand: int | None,
         feature_type: str,
         genetic_code: int = 11,
+        fuzzy_start: bool = False,
+        fuzzy_end: bool = False,
     ) -> FeaturePreview:
         interval = Interval0.from_display(start_1based, end_1based)
-        part = LocationPart(start0=interval.start0, end0=interval.end0, order_index=0)
+        part = LocationPart(
+            start0=interval.start0,
+            end0=interval.end0,
+            order_index=0,
+            fuzzy_start=fuzzy_start,
+            fuzzy_end=fuzzy_end,
+        )
         nucleotide = extract_sequence(record.sequence, [part], strand, record.length)
         translation = (
             translate(nucleotide, genetic_code=genetic_code) if feature_type == "CDS" else None
@@ -71,9 +80,17 @@ class AnnotationService:
         feature_type: str,
         qualifiers: QualifierSet,
         provenance: Provenance | None = None,
+        fuzzy_start: bool = False,
+        fuzzy_end: bool = False,
     ) -> Feature:
         interval = Interval0.from_display(start_1based, end_1based)
-        part = LocationPart(start0=interval.start0, end0=interval.end0, order_index=0)
+        part = LocationPart(
+            start0=interval.start0,
+            end0=interval.end0,
+            order_index=0,
+            fuzzy_start=fuzzy_start,
+            fuzzy_end=fuzzy_end,
+        )
 
         provenance_id: str | None = None
         repo = self._project_service.require_writable()
@@ -104,7 +121,7 @@ class AnnotationService:
     def preview_compound_feature(
         self,
         record: SequenceRecord,
-        segments_1based: list[tuple[int, int]],
+        segments_1based: Sequence[tuple[int, int] | tuple[int, int, bool, bool]],
         strand: int | None,
         feature_type: str,
         genetic_code: int = 11,
@@ -126,7 +143,7 @@ class AnnotationService:
     def create_compound_feature(
         self,
         record: SequenceRecord,
-        segments_1based: list[tuple[int, int]],
+        segments_1based: Sequence[tuple[int, int] | tuple[int, int, bool, bool]],
         strand: int | None,
         feature_type: str,
         qualifiers: QualifierSet,
@@ -151,7 +168,7 @@ class AnnotationService:
         )
         command = FeatureCreateCommand(repo, feature)
         self._project_service.undo_stack.push(command)
-        span = ", ".join(f"{s}..{e}" for s, e in segments_1based)
+        span = ", ".join(f"{seg[0]}..{seg[1]}" for seg in segments_1based)
         self._project_service.log_audit(
             EventType.FEATURE_CREATE, feature.id, f"Created {feature.type} join feature at {span}"
         )
@@ -160,7 +177,8 @@ class AnnotationService:
 
     @staticmethod
     def _build_ordered_parts(
-        segments_1based: list[tuple[int, int]], strand: int | None
+        segments_1based: Sequence[tuple[int, int] | tuple[int, int, bool, bool]],
+        strand: int | None,
     ) -> list[LocationPart]:
         return build_ordered_parts_from_display_segments(segments_1based, strand)
 
