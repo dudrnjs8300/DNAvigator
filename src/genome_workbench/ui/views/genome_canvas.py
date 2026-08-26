@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QPainter,
     QPaintEvent,
+    QPalette,
     QPen,
     QPolygon,
     QResizeEvent,
@@ -191,11 +192,19 @@ class GenomeCanvas(QWidget):
 
     # -- Painting --------------------------------------------------------------
 
+    def _fg_color(self) -> QColor:
+        """Primary foreground color, paired with the palette().base() fill so
+        ruler/text stays legible under both light and dark themes."""
+        return self.palette().color(QPalette.ColorRole.Text)
+
+    def _muted_color(self) -> QColor:
+        return self.palette().color(QPalette.ColorRole.PlaceholderText)
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.fillRect(self.rect(), self.palette().base())
         if self._record is None or self._viewport is None:
-            painter.setPen(QPen(QColor("#888888")))
+            painter.setPen(QPen(self._muted_color()))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No record loaded")
             painter.end()
             return
@@ -214,7 +223,7 @@ class GenomeCanvas(QWidget):
     def _paint_ruler(self, painter: QPainter) -> None:
         assert self._viewport is not None
         vt = self._viewport
-        painter.setPen(QPen(QColor("#555555")))
+        painter.setPen(QPen(self._fg_color()))
         painter.drawLine(0, _RULER_HEIGHT, self.width(), _RULER_HEIGHT)
 
         target_ticks = max(2, self.width() // 120)
@@ -235,7 +244,7 @@ class GenomeCanvas(QWidget):
         assert self._viewport is not None
         vt = self._viewport
         y = self._lane_area_top() + 10
-        painter.setPen(QPen(QColor("#333333")))
+        painter.setPen(QPen(self._muted_color()))
         painter.drawLine(0, y, self.width(), y)
 
         bucket_count = max(1, self.width() // 3)
@@ -275,7 +284,10 @@ class GenomeCanvas(QWidget):
             is_hover = feature.id == self._hover_feature_id
             painter.setPen(
                 QPen(
-                    QColor("#1f2937") if is_selected else color.darker(140), 2 if is_selected else 1
+                    self.palette().color(QPalette.ColorRole.Highlight)
+                    if is_selected
+                    else color.darker(140),
+                    2 if is_selected else 1,
                 )
             )
             painter.setBrush(color.lighter(120) if is_hover else color)
@@ -305,7 +317,7 @@ class GenomeCanvas(QWidget):
         sequence = self._record.sequence
         start = vt.view_start0
         end = min(vt.view_end0, len(sequence))
-        painter.setPen(QPen(QColor("#111111")))
+        painter.setPen(QPen(self._fg_color()))
         for pos in range(start, end):
             x = vt.genome_to_pixel(pos)
             if x < -char_width or x > self.width():
@@ -313,9 +325,9 @@ class GenomeCanvas(QWidget):
             base = sequence[pos]
             painter.drawText(int(x), base_area_top + _BASE_ROW_HEIGHT, base)
             complement_base = reverse_complement(base)
-            painter.setPen(QPen(QColor("#777777")))
+            painter.setPen(QPen(self._muted_color()))
             painter.drawText(int(x), base_area_top + 2 * _BASE_ROW_HEIGHT, complement_base)
-            painter.setPen(QPen(QColor("#111111")))
+            painter.setPen(QPen(self._fg_color()))
 
         self._paint_translation_overlay(painter, base_area_top, char_width)
 

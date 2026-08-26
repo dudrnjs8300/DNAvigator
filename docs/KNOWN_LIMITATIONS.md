@@ -5,8 +5,8 @@
 ## 시각화
 
 - **Circular map의 zoom/rotation 구현됨.** 마우스 휠로 확대/축소(중심 기준), 빈 배경 드래그로 회전(feature 위 드래그는 기존처럼 선택으로 동작). 순수 상태 클래스(`ui/rendering/circular_viewport_transform.py`)로 분리해 단위 테스트하고, 실제 wheel/drag 이벤트로 UI 테스트도 추가했다(`tests/ui/test_circular_map_zoom_rotation.py`). Record를 전환하면 확대/회전 상태가 자동으로 초기화된다. Pan(줌 상태에서 드래그로 이동)은 구현하지 않았다 — 회전만으로 원하는 각도를 볼 수 있어 우선순위를 낮췄다.
-- **10,000+ feature 규모의 렌더링 성능 벤치마크 미실시** (Phase 3 gate, 5.5 Mb/6,000 feature). `FeatureIntervalIndex`는 spec 8.3 권장 방식(sorted start + bisect, 최대 feature 길이로 범위 제한)으로 구현되어 있으나 대규모 실측은 아직 없다.
-- **DPI(125/150/200%) 및 다크/라이트 테마 미검증** (Phase 7). offscreen 플랫폼에서만 자동 검증했다.
+- **성능 벤치마크 실측 완료** (Phase 3 gate, 5.5 Mb/6,000 feature synthetic genome). 측정 중 실제 성능 버그 2건을 발견해 고쳤다: (1) `save_feature`/`save_record`가 호출마다 SQLite `commit()`(fsync)을 실행해 6,000 feature import가 86초 걸렸다 — bulk 저장 시 한 번만 commit하는 `save_features_bulk`/`save_records_bulk`를 추가하고 import 경로를 전환해 0.86초로 단축(100배). (2) `list_features`가 feature마다 4개의 추가 쿼리를 날리는 N+1 패턴이라 project reopen이 6.5초 걸렸다 — JOIN 기반 벌크 쿼리로 재작성해 194ms로 단축(33배). 두 항목 모두 spec 8.4 목표(import ≤5s, warm view-switch ≤500ms)를 이제 크게 상회 달성한다. 렌더링/pan/zoom도 모두 목표 대비 수십 배 여유 있게 측정됨. 상세 수치와 측정 조건은 `docs/PERFORMANCE.md` 참고.
+- **DPI(125/150/200%) 및 다크/라이트 테마 검증 완료.** `QT_SCALE_FACTOR` 1.0/1.25/1.5/2.0에서 크래시 없이 동작함을 확인했다. 검증 중 다크 팔레트에서 눈금자/염기서열 텍스트 등 전경색 다수가 고정된 진회색 hex 값이라 배경과 거의 구분되지 않는 실제 가독성 버그를 발견해 고쳤다(`GenomeCanvas`, `CircularGenomeCanvas`) — 이제 `palette()`의 Text/PlaceholderText/Highlight 역할을 사용해 라이트/다크 어느 쪽에서도 WCAG AA 기준(4.5:1)을 만족한다. `tests/ui/test_canvas_theme_contrast.py`로 회귀 방지. 실제 Windows 디스플레이 설정을 통한 육안 최종 확인은 자동화 환경 특성상 여전히 하지 못했다.
 
 ## Project 관리
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QWheelEvent
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPalette, QPen, QWheelEvent
 from PySide6.QtWidgets import QToolTip, QWidget
 
 from genome_workbench.domain.coordinates import display_from_internal
@@ -83,13 +83,21 @@ class CircularGenomeCanvas(QWidget):
         normalized = (angle_degrees + 90.0 - self._transform.rotation_degrees) % 360.0
         return int(round(normalized / 360.0 * length)) % max(length, 1)
 
+    def _fg_color(self) -> QColor:
+        """Primary foreground color, paired with the palette().base() fill so
+        the ring/labels stay legible under both light and dark themes."""
+        return self.palette().color(QPalette.ColorRole.Text)
+
+    def _muted_color(self) -> QColor:
+        return self.palette().color(QPalette.ColorRole.PlaceholderText)
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), self.palette().base())
 
         if self._record is None or self._record.length == 0:
-            painter.setPen(QPen(QColor("#888888")))
+            painter.setPen(QPen(self._muted_color()))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No record loaded")
             painter.end()
             return
@@ -98,17 +106,17 @@ class CircularGenomeCanvas(QWidget):
         length = self._record.length
 
         backbone_rect = QRectF(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius)
-        painter.setPen(QPen(QColor("#555555"), 2))
+        painter.setPen(QPen(self._fg_color(), 2))
         painter.drawEllipse(backbone_rect)
 
         origin_point = self._point_on_ring(center, radius, -90.0)
-        painter.setPen(QPen(QColor("#111111"), 2))
+        painter.setPen(QPen(self._fg_color(), 2))
         painter.drawLine(center, origin_point)
 
         for feature in self._features:
             self._draw_feature_arc(painter, center, radius, feature, length)
 
-        painter.setPen(QPen(QColor("#333333")))
+        painter.setPen(QPen(self._fg_color()))
         painter.drawText(
             QRectF(center.x() - radius, center.y() - 10, 2 * radius, 20),
             Qt.AlignmentFlag.AlignCenter,
@@ -140,7 +148,9 @@ class CircularGenomeCanvas(QWidget):
         is_hover = feature.id == self._hover_feature_id
         pen_width = _RING_WIDTH + (4 if is_selected else 0)
         pen_color = (
-            QColor("#1f2937") if is_selected else (color.lighter(130) if is_hover else color)
+            self.palette().color(QPalette.ColorRole.Highlight)
+            if is_selected
+            else (color.lighter(130) if is_hover else color)
         )
         pen = QPen(pen_color, pen_width)
         pen.setCapStyle(Qt.PenCapStyle.FlatCap)

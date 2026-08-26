@@ -30,8 +30,7 @@ class ImportService:
     ) -> ImportResult:
         repo = self._project_service.require_writable()
         parsed = read_fasta(Path(path), molecule_type_hint=molecule_type_hint)
-        for record in parsed.records:
-            repo.save_record(record)
+        repo.save_records_bulk(parsed.records)
         if parsed.records:
             self._project_service.log_audit(
                 EventType.IMPORT,
@@ -44,11 +43,9 @@ class ImportService:
     def import_genbank(self, path: Path) -> ImportResult:
         repo = self._project_service.require_writable()
         parsed = read_genbank(Path(path))
-        for record in parsed.records:
-            repo.save_record(record)
+        repo.save_records_bulk(parsed.records)
         for features in parsed.features_by_record_id.values():
-            for feature in features:
-                repo.save_feature(feature)
+            repo.save_features_bulk(features)
         if parsed.records:
             self._project_service.log_audit(
                 EventType.IMPORT,
@@ -95,11 +92,9 @@ class ImportService:
                 )
             )
 
-        for record in parsed.records:
-            repo.save_record(record)
+        repo.save_records_bulk(parsed.records)
         for features in parsed.features_by_record_id.values():
-            for feature in features:
-                repo.save_feature(feature)
+            repo.save_features_bulk(features)
         if parsed.records:
             self._project_service.log_audit(
                 EventType.IMPORT,

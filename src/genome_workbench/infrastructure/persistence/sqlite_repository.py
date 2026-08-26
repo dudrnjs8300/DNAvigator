@@ -108,7 +108,7 @@ class ProjectRepository:
 
     # -- SequenceRecord ------------------------------------------------------
 
-    def save_record(self, record: SequenceRecord) -> None:
+    def save_record(self, record: SequenceRecord, commit: bool = True) -> None:
         self._conn.execute(
             """INSERT INTO sequence_record
                (id, display_id, name, description, molecule_type, topology, sequence,
@@ -141,6 +141,14 @@ class ProjectRepository:
                 record.folder_id,
             ),
         )
+        if commit:
+            self._conn.commit()
+
+    def save_records_bulk(self, records: list[SequenceRecord]) -> None:
+        """Saves many records in a single transaction/commit instead of one
+        fsync per record -- see save_features_bulk for why this matters."""
+        for record in records:
+            self.save_record(record, commit=False)
         self._conn.commit()
 
     def get_record(self, record_id: str) -> SequenceRecord | None:
@@ -271,7 +279,7 @@ class ProjectRepository:
 
     # -- Feature ---------------------------------------------------------------
 
-    def save_feature(self, feature: Feature) -> None:
+    def save_feature(self, feature: Feature, commit: bool = True) -> None:
         if feature.provenance_id is not None:
             existing = self.get_provenance(feature.provenance_id)
             if existing is None:
@@ -337,6 +345,22 @@ class ProjectRepository:
                 "INSERT OR IGNORE INTO feature_relationship (parent_id, child_id) VALUES (?, ?)",
                 (feature.id, child_id),
             )
+        if commit:
+            self._conn.commit()
+
+    def save_features_bulk(self, features: list[Feature]) -> None:
+        """Saves many features in a single transaction/commit instead of one
+        fsync per feature. A single-feature commit forces a disk sync
+        (SQLite's default synchronous mode), which is the right tradeoff for
+        one user edit at a time (D-009: immediate commit means there's no
+        "unsaved" state to lose) but made importing thousands of features
+        from a GenBank/GFF3 file dramatically slower than necessary --
+        measured at ~86s for 6,000 features (spec 8.4 target: <=5s) before
+        this existed, entirely spent on fsync overhead rather than actual
+        work. See docs/PERFORMANCE.md.
+        """
+        for feature in features:
+            self.save_feature(feature, commit=False)
         self._conn.commit()
 
     def get_feature(self, feature_id: str) -> Feature | None:
@@ -346,10 +370,72 @@ class ProjectRepository:
         return self._row_to_feature(row)
 
     def list_features(self, record_id: str) -> list[Feature]:
-        rows = self._conn.execute(
+        """Bulk-loads every feature for a record in a fixed number of
+        queries (one JOIN per related table) instead of one round trip per
+        related table *per feature*. The naive per-feature version issued
+        4 extra queries for every feature -- 24,000+ queries for a 6,000
+        feature record -- which measured at ~6.5s just to reopen a project
+        (spec 8.4 target: <=500ms warm). See docs/PERFORMANCE.md.
+        """
+        feature_rows = self._conn.execute(
             "SELECT * FROM feature WHERE record_id = ? ORDER BY rowid", (record_id,)
         ).fetchall()
-        return [self._row_to_feature(row) for row in rows]
+        if not feature_rows:
+            return []
+
+        parts_by_feature: dict[str, list[LocationPart]] = {}
+        for p in self._conn.execute(
+            """SELECT lp.* FROM location_part lp JOIN feature f ON lp.feature_id = f.id
+               WHERE f.record_id = ? ORDER BY lp.feature_id, lp.order_index""",
+            (record_id,),
+        ).fetchall():
+            parts_by_feature.setdefault(p["feature_id"], []).append(
+                LocationPart(
+                    start0=p["start0"],
+                    end0=p["end0"],
+                    order_index=p["order_index"],
+                    fuzzy_start=bool(p["fuzzy_start"]),
+                    fuzzy_end=bool(p["fuzzy_end"]),
+                    phase=p["phase"],
+                )
+            )
+
+        qualifiers_by_feature: dict[str, QualifierSet] = {}
+        for q in self._conn.execute(
+            """SELECT q.* FROM qualifier q JOIN feature f ON q.feature_id = f.id
+               WHERE f.record_id = ? ORDER BY q.feature_id, q.seq_index""",
+            (record_id,),
+        ).fetchall():
+            qualifiers_by_feature.setdefault(q["feature_id"], QualifierSet()).add(
+                q["key"], q["value"]
+            )
+
+        children_by_feature: dict[str, list[str]] = {}
+        for r in self._conn.execute(
+            """SELECT fr.* FROM feature_relationship fr JOIN feature f ON fr.parent_id = f.id
+               WHERE f.record_id = ?""",
+            (record_id,),
+        ).fetchall():
+            children_by_feature.setdefault(r["parent_id"], []).append(r["child_id"])
+
+        parents_by_feature: dict[str, list[str]] = {}
+        for r in self._conn.execute(
+            """SELECT fr.* FROM feature_relationship fr JOIN feature f ON fr.child_id = f.id
+               WHERE f.record_id = ?""",
+            (record_id,),
+        ).fetchall():
+            parents_by_feature.setdefault(r["child_id"], []).append(r["parent_id"])
+
+        return [
+            self._build_feature(
+                row,
+                parts_by_feature.get(row["id"], []),
+                qualifiers_by_feature.get(row["id"], QualifierSet()),
+                children_by_feature.get(row["id"], []),
+                parents_by_feature.get(row["id"], []),
+            )
+            for row in feature_rows
+        ]
 
     def delete_feature(self, feature_id: str) -> None:
         self._conn.execute("DELETE FROM feature WHERE id = ?", (feature_id,))
@@ -391,8 +477,18 @@ class ProjectRepository:
                 (feature_id,),
             ).fetchall()
         ]
+        return self._build_feature(row, parts, qualifiers, child_ids, parent_ids)
+
+    @staticmethod
+    def _build_feature(
+        row: sqlite3.Row,
+        parts: list[LocationPart],
+        qualifiers: QualifierSet,
+        child_ids: list[str],
+        parent_ids: list[str],
+    ) -> Feature:
         return Feature(
-            id=feature_id,
+            id=row["id"],
             record_id=row["record_id"],
             type=row["type"],
             strand=row["strand"],

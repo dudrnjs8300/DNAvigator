@@ -220,6 +220,143 @@ def test_initialize_schema_is_idempotent(project_path: Path):
     conn.close()
 
 
+class _CountingConnection(sqlite3.Connection):
+    """sqlite3.Connection is an immutable builtin type -- neither the class
+    nor an instance can have `commit` monkeypatched onto it directly. A
+    thin subclass is the only way to count commit() calls."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.commit_count = 0
+
+    def commit(self) -> None:
+        self.commit_count += 1
+        super().commit()
+
+
+def _repo_with_counting_connection(project_path: Path) -> ProjectRepository:
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(project_path), factory=_CountingConnection)
+    initialize_schema(conn)
+    return ProjectRepository(conn)
+
+
+def test_save_features_bulk_commits_once_not_per_feature(project_path: Path):
+    """Regression test for the fix that took a 6,000-feature import from
+    ~86s to <1s (spec 8.4 target: <=5s): save_feature commits (fsyncs) on
+    every call, so a naive per-feature loop paid one fsync per feature.
+    save_features_bulk must defer all commits to a single one at the end.
+    """
+    repo = _repo_with_counting_connection(project_path)
+    record = SequenceRecord(
+        sequence="A" * 10_000, checksum_sha256="x", molecule_type=MoleculeType.DNA
+    )
+    repo.save_record(record)
+    features = [
+        Feature(
+            record_id=record.id,
+            type="misc_feature",
+            parts=[LocationPart(start0=i * 10, end0=i * 10 + 5, order_index=0)],
+        )
+        for i in range(50)
+    ]
+
+    repo._conn.commit_count = 0  # reset past the setup writes above
+    repo.save_features_bulk(features)
+
+    assert repo._conn.commit_count == 1
+    assert len(repo.list_features(record.id)) == 50
+    repo.close()
+
+
+def test_save_records_bulk_commits_once_not_per_record(project_path: Path):
+    repo = _repo_with_counting_connection(project_path)
+    records = [
+        SequenceRecord(
+            display_id=f"contig{i}",
+            sequence="ACGT" * 10,
+            checksum_sha256="x",
+            molecule_type=MoleculeType.DNA,
+        )
+        for i in range(20)
+    ]
+
+    repo._conn.commit_count = 0
+    repo.save_records_bulk(records)
+
+    assert repo._conn.commit_count == 1
+    assert len(repo.list_records()) == 20
+    repo.close()
+
+
+def test_list_features_bulk_load_matches_per_feature_lookup_for_compound_and_related_features(
+    project_path: Path,
+):
+    """Correctness check for the bulk-JOIN rewrite of list_features (the
+    old version issued 4 extra queries per feature -- ~24,000 queries for
+    6,000 features, measured at ~6.5s just to reopen a project; spec 8.4
+    target: <=500ms warm). The new version must return identical data to
+    get_feature() called one at a time, including for the edge cases that
+    make grouping-by-feature-id easy to get subtly wrong: multi-part
+    (compound) locations, multi-value qualifiers, parent/child
+    relationships, and a feature with none of the above.
+    """
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    record = SequenceRecord(
+        sequence="A" * 10_000, checksum_sha256="x", molecule_type=MoleculeType.DNA
+    )
+    repo.save_record(record)
+
+    bare = Feature(
+        record_id=record.id, type="misc_feature", parts=[LocationPart(0, 10, order_index=0)]
+    )
+    qualifiers = QualifierSet()
+    qualifiers.add("gene", "geneA")
+    qualifiers.add("db_xref", "GO:001")
+    qualifiers.add("db_xref", "GO:002")
+    compound = Feature(
+        record_id=record.id,
+        type="CDS",
+        strand=1,
+        parts=[
+            LocationPart(start0=100, end0=200, order_index=0),
+            LocationPart(start0=300, end0=400, order_index=1),
+        ],
+        qualifiers=qualifiers,
+    )
+    child = Feature(record_id=record.id, type="mRNA", parts=[LocationPart(500, 600, order_index=0)])
+    parent = Feature(
+        record_id=record.id,
+        type="gene",
+        parts=[LocationPart(500, 600, order_index=0)],
+        child_ids=[child.id],
+    )
+    repo.save_feature(bare)
+    repo.save_feature(compound)
+    repo.save_feature(child)
+    repo.save_feature(parent)  # saving the parent's child_ids is what persists the relationship
+
+    bulk = {f.id: f for f in repo.list_features(record.id)}
+    assert set(bulk) == {bare.id, compound.id, parent.id, child.id}
+
+    for feature_id in bulk:
+        individually = repo.get_feature(feature_id)
+        from_bulk = bulk[feature_id]
+        assert [(p.start0, p.end0, p.order_index) for p in from_bulk.parts] == [
+            (p.start0, p.end0, p.order_index) for p in individually.parts
+        ]
+        assert list(from_bulk.qualifiers.items()) == list(individually.qualifiers.items())
+        assert sorted(from_bulk.child_ids) == sorted(individually.child_ids)
+        assert sorted(from_bulk.parent_ids) == sorted(individually.parent_ids)
+
+    assert bulk[child.id].parent_ids == [parent.id]
+    assert bulk[parent.id].child_ids == [child.id]
+    assert bulk[bare.id].parts == [LocationPart(0, 10, order_index=0)]
+    assert bulk[bare.id].child_ids == []
+    assert bulk[bare.id].parent_ids == []
+    repo.close()
+
+
 def test_feature_rejects_unknown_provenance(project_path: Path):
     repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
     record = SequenceRecord(
