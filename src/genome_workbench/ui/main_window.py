@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QTabWidget,
+    QWidget,
 )
 
 from genome_workbench.application.annotation_service import AnnotationService
@@ -48,10 +49,13 @@ from genome_workbench.ui.dialogs.batch_blast_results_dialog import BatchBlastRes
 from genome_workbench.ui.dialogs.batch_qualifier_dialog import BatchQualifierDialog
 from genome_workbench.ui.dialogs.blast_setup_dialog import BlastSetupDialog
 from genome_workbench.ui.dialogs.create_blast_database_dialog import CreateBlastDatabaseDialog
+from genome_workbench.ui.dialogs.feature_colors_dialog import FeatureColorsDialog
 from genome_workbench.ui.dialogs.find_feature_dialog import FindFeatureDialog
 from genome_workbench.ui.docks.blast_panel import BlastPanel
 from genome_workbench.ui.docks.inspector_dock import InspectorDock
 from genome_workbench.ui.docks.project_explorer_dock import ProjectExplorerDock
+from genome_workbench.ui.rendering.feature_colors import load_color_overrides, save_color_overrides
+from genome_workbench.ui.rendering.image_export import ImageExportError, export_widget_as_image
 from genome_workbench.ui.views.circular_genome_canvas import CircularGenomeCanvas
 from genome_workbench.ui.views.feature_table_view import FeatureTableView
 from genome_workbench.ui.views.genome_map_page import GenomeMapPage
@@ -63,7 +67,10 @@ logger = logging.getLogger("genome_workbench.ui")
 
 class MainWindow(QMainWindow):
     def __init__(
-        self, blast_work_dir: Path | None = None, templates_dir: Path | None = None
+        self,
+        blast_work_dir: Path | None = None,
+        templates_dir: Path | None = None,
+        color_overrides_dir: Path | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
@@ -76,6 +83,8 @@ class MainWindow(QMainWindow):
         self.blast_service = BlastService(self.project_service, work_dir=blast_work_dir)
         self.sequence_ops_service = SequenceOperationsService()
         self._templates_dir = templates_dir
+        self._color_overrides_dir = color_overrides_dir
+        self._color_overrides = load_color_overrides(color_overrides_dir)
 
         self._current_record: SequenceRecord | None = None
         self._current_feature: Feature | None = None
@@ -154,6 +163,9 @@ class MainWindow(QMainWindow):
         self.circular_canvas.featureClicked.connect(self._on_feature_selected_from_view)
         self.circular_canvas.featureDoubleClicked.connect(self._on_circular_feature_double_clicked)
         self._tabs.addTab(self.circular_canvas, "Circular Map")
+
+        self.genome_map_page.set_color_overrides(self._color_overrides)
+        self.circular_canvas.set_color_overrides(self._color_overrides)
 
         self.feature_table = FeatureTableView(self)
         self.feature_table.featureSelected.connect(self._on_feature_selected_from_view)
@@ -251,6 +263,15 @@ class MainWindow(QMainWindow):
         )
         view_menu.addAction(self.action_zoom_whole_genome)
         view_menu.addAction(self.action_zoom_selection)
+        view_menu.addSeparator()
+        self.action_feature_colors = make_action(
+            self, "&Feature Colors...", self._on_feature_colors_requested
+        )
+        view_menu.addAction(self.action_feature_colors)
+        self.action_export_image = make_action(
+            self, "&Export View as Image...", self._on_export_image_requested
+        )
+        view_menu.addAction(self.action_export_image)
 
         blast_menu = self.menuBar().addMenu("&BLAST")
         self.action_blast_setup = make_action(
@@ -293,6 +314,7 @@ class MainWindow(QMainWindow):
         self.action_find_feature.setEnabled(has_records)
         self.action_zoom_whole_genome.setEnabled(has_record)
         self.action_zoom_selection.setEnabled(has_record)
+        self.action_export_image.setEnabled(has_record)
         if is_open and self.project_service.is_read_only:
             self.statusBar().showMessage("Project open read-only", 5000)
 
@@ -669,6 +691,67 @@ class MainWindow(QMainWindow):
             self._update_action_states()
             if dialog.created_feature is not None:
                 self._log(f"Created feature: {dialog.created_feature.computed_label()}")
+
+    def _on_feature_colors_requested(self) -> None:
+        extra_types: list[str] = []
+        if self._current_record is not None:
+            features = self.project_service.list_features(self._current_record.id)
+            extra_types = sorted({f.type for f in features})
+        dialog = FeatureColorsDialog(self._color_overrides, extra_types, self)
+        if dialog.exec():
+            self._color_overrides = dialog.overrides
+            save_color_overrides(self._color_overrides, self._color_overrides_dir)
+            self.genome_map_page.set_color_overrides(self._color_overrides)
+            self.circular_canvas.set_color_overrides(self._color_overrides)
+            self._log("Feature colors updated.")
+
+    def _on_export_image_requested(self) -> None:
+        current_tab = self._tabs.currentWidget()
+        target_widget: QWidget
+        if current_tab is self.genome_map_page:
+            target_widget = self.genome_map_page.canvas
+        elif current_tab is self.circular_canvas:
+            target_widget = self.circular_canvas
+        else:
+            QMessageBox.information(
+                self,
+                "Export View as Image",
+                "Switch to the Genome Map or Circular Map tab first.",
+            )
+            return
+
+        path_str, chosen_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export View as Image",
+            "",
+            "PNG Image (*.png);;SVG Image (*.svg)",
+        )
+        if not path_str:
+            return
+        path = Path(path_str)
+        if not path.suffix:
+            path = path.with_suffix(".svg" if "SVG" in chosen_filter else ".png")
+
+        scale = 1
+        if path.suffix.lower() == ".png":
+            choice, ok = QInputDialog.getItem(
+                self,
+                "Export Resolution",
+                "Resolution (higher looks sharper when printed or zoomed in):",
+                ["1x (screen resolution)", "2x", "3x (recommended for print)", "4x"],
+                2,
+                editable=False,
+            )
+            if not ok:
+                return
+            scale = {"1x (screen resolution)": 1, "2x": 2, "4x": 4}.get(choice, 3)
+
+        try:
+            export_widget_as_image(target_widget, path, png_scale=scale)
+        except ImageExportError as exc:
+            QMessageBox.critical(self, "Export Failed", str(exc))
+            return
+        self._log(f"Exported view to {path}")
 
     def _on_about(self) -> None:
         QMessageBox.about(

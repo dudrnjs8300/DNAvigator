@@ -9,7 +9,14 @@ of one at a time through the Inspector.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QAbstractItemView, QMenu, QTableWidget, QTableWidgetItem
+from PySide6.QtGui import QKeyEvent, QKeySequence
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QMenu,
+    QTableWidget,
+    QTableWidgetItem,
+)
 
 from genome_workbench.domain.coordinates import display_from_internal
 from genome_workbench.domain.models import Feature
@@ -71,6 +78,26 @@ class FeatureTableView(QTableWidget):
                 self.blockSignals(False)
                 self.scrollToItem(item)
                 return
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self._copy_selected_rows_to_clipboard()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _copy_selected_rows_to_clipboard(self) -> None:
+        rows = sorted({index.row() for index in self.selectedIndexes()})
+        if not rows:
+            return
+        lines = ["\t".join(_COLUMNS)]
+        for row in rows:
+            values = []
+            for col in range(len(_COLUMNS)):
+                item = self.item(row, col)
+                values.append(item.text() if item is not None else "")
+            lines.append("\t".join(values))
+        QApplication.clipboard().setText("\n".join(lines))
 
     def _on_selection_changed(self) -> None:
         rows = {index.row() for index in self.selectedIndexes()}

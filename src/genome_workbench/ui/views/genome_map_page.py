@@ -73,6 +73,10 @@ class GenomeMapPage(QWidget):
         self.canvas.set_features(features)
         self.minimap.set_features(features)
 
+    def set_color_overrides(self, overrides: dict[str, str]) -> None:
+        self.canvas.set_color_overrides(overrides)
+        self.minimap.set_color_overrides(overrides)
+
     def select_feature(self, feature_id: str | None) -> None:
         self.canvas.select_feature(feature_id)
 

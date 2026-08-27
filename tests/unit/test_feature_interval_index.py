@@ -43,3 +43,18 @@ def test_rebuild_replaces_contents():
 def test_len():
     index = FeatureIntervalIndex([_feature(0, 10), _feature(20, 30)])
     assert len(index) == 2
+
+
+def test_by_id_finds_feature():
+    f1 = _feature(0, 10)
+    index = FeatureIntervalIndex([f1])
+    assert index.by_id(f1.id) is f1
+
+
+def test_by_id_unknown_returns_none():
+    index = FeatureIntervalIndex([_feature(0, 10)])
+    assert index.by_id("does-not-exist") is None
+
+
+def test_by_id_empty_index_returns_none():
+    assert FeatureIntervalIndex().by_id("anything") is None

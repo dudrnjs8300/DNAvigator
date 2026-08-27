@@ -26,6 +26,11 @@ class Minimap(QWidget):
         self._view_start0 = 0
         self._view_end0 = 0
         self._dragging = False
+        self._color_overrides: dict[str, str] = {}
+
+    def set_color_overrides(self, overrides: dict[str, str]) -> None:
+        self._color_overrides = overrides
+        self.update()
 
     def set_record_length(self, length: int) -> None:
         self._sequence_length = max(0, length)
@@ -62,7 +67,7 @@ class Minimap(QWidget):
             x0 = self._x_for_position(feature.start0)
             x1 = self._x_for_position(feature.end0)
             width = max(1.0, x1 - x0)
-            painter.setBrush(feature_color(feature.type))
+            painter.setBrush(feature_color(feature.type, self._color_overrides))
             painter.drawRect(QRect(int(x0), 6, int(width), self.height() - 12))
 
         vx0 = self._x_for_position(self._view_start0)

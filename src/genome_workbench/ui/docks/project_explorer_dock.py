@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QDockWidget,
     QInputDialog,
@@ -57,7 +58,32 @@ class ProjectExplorerDock(QDockWidget):
         self._tree.itemSelectionChanged.connect(self._on_selection_changed)
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._on_context_menu)
+        self._tree.installEventFilter(self)
         self.setWidget(self._tree)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if (
+            watched is self._tree
+            and event.type() == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() == Qt.Key.Key_Delete
+        ):
+            self._on_delete_key_pressed()
+            return True
+        return super().eventFilter(watched, event)
+
+    def _on_delete_key_pressed(self) -> None:
+        items = self._tree.selectedItems()
+        if not items:
+            return
+        item = items[0]
+        item_type = item.data(0, _ITEM_TYPE_ROLE)
+        item_id = item.data(0, Qt.ItemDataRole.UserRole)
+        item_name = item.text(0)
+        if item_type == "record":
+            self._prompt_delete_record(item_id, item_name)
+        elif item_type == "folder":
+            self._prompt_delete_folder(item_id, item_name)
 
     def set_data(
         self,

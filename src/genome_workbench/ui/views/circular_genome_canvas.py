@@ -15,10 +15,21 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPalette, QPen, QWheelEvent
-from PySide6.QtWidgets import QToolTip, QWidget
+from PySide6.QtGui import (
+    QColor,
+    QKeyEvent,
+    QKeySequence,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPalette,
+    QPen,
+    QWheelEvent,
+)
+from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
 from genome_workbench.domain.coordinates import display_from_internal
+from genome_workbench.domain.locations import extract_sequence
 from genome_workbench.domain.models import Feature, SequenceRecord
 from genome_workbench.ui.rendering.circular_viewport_transform import CircularViewportTransform
 from genome_workbench.ui.rendering.feature_colors import feature_color
@@ -37,6 +48,7 @@ class CircularGenomeCanvas(QWidget):
         super().__init__(parent)
         self.setMouseTracking(True)
         self.setMinimumSize(240, 240)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._record: SequenceRecord | None = None
         self._features: list[Feature] = []
         self._selected_feature_id: str | None = None
@@ -44,6 +56,11 @@ class CircularGenomeCanvas(QWidget):
         self._transform = CircularViewportTransform()
         self._rotate_drag_last_angle: float | None = None
         self._pan_drag_last_pos: QPointF | None = None
+        self._color_overrides: dict[str, str] = {}
+
+    def set_color_overrides(self, overrides: dict[str, str]) -> None:
+        self._color_overrides = overrides
+        self.update()
 
     def set_record(self, record: SequenceRecord | None, features: list[Feature]) -> None:
         self._record = record
@@ -145,7 +162,7 @@ class CircularGenomeCanvas(QWidget):
         rect = QRectF(
             center.x() - ring_radius, center.y() - ring_radius, 2 * ring_radius, 2 * ring_radius
         )
-        color = feature_color(feature.type)
+        color = feature_color(feature.type, self._color_overrides)
         is_selected = feature.id == self._selected_feature_id
         is_hover = feature.id == self._hover_feature_id
         pen_width = _RING_WIDTH + (4 if is_selected else 0)
@@ -187,6 +204,25 @@ class CircularGenomeCanvas(QWidget):
     def _angle_at_point_degrees(self, x: float, y: float) -> float:
         center, _radius = self._center_and_radius()
         return math.degrees(math.atan2(y - center.y(), x - center.x()))
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self._copy_selected_feature_to_clipboard()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _copy_selected_feature_to_clipboard(self) -> None:
+        if self._record is None or self._selected_feature_id is None:
+            return
+        feature = next((f for f in self._features if f.id == self._selected_feature_id), None)
+        if feature is None:
+            return
+        text = extract_sequence(
+            self._record.sequence, feature.parts, feature.strand, self._record.length
+        )
+        if text:
+            QApplication.clipboard().setText(text)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.button() != Qt.MouseButton.LeftButton:

@@ -17,6 +17,7 @@ class FeatureIntervalIndex:
         self._sorted: list[Feature] = []
         self._starts: list[int] = []
         self._max_length = 0
+        self._by_id: dict[str, Feature] = {}
         if features:
             self.rebuild(features)
 
@@ -24,6 +25,10 @@ class FeatureIntervalIndex:
         self._sorted = sorted(features, key=lambda f: f.start0)
         self._starts = [f.start0 for f in self._sorted]
         self._max_length = max((f.end0 - f.start0 for f in features), default=0)
+        self._by_id = {f.id: f for f in features}
+
+    def by_id(self, feature_id: str) -> Feature | None:
+        return self._by_id.get(feature_id)
 
     def query_overlapping(self, start0: int, end0: int) -> list[Feature]:
         if not self._sorted:

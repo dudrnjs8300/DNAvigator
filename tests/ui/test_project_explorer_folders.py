@@ -98,6 +98,73 @@ def test_dispatch_delete_record_cancelled_emits_nothing(qtbot, monkeypatch):
     assert "id" not in received
 
 
+def test_delete_key_on_selected_record_prompts_and_emits_signal(qtbot, monkeypatch):
+    """Delete key is a shortcut for the same "Delete Record..." context-menu
+    action -- previously the only way to delete a record was a right-click
+    (KNOWN_LIMITATIONS.md-adjacent gap raised directly by the user)."""
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    dock = ProjectExplorerDock()
+    qtbot.addWidget(dock)
+    monkeypatch.setattr(
+        "genome_workbench.ui.docks.project_explorer_dock.QMessageBox.warning",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+    )
+    record = _record("contig1")
+    dock.set_data([record], [])
+    dock._tree.setCurrentItem(dock._tree.topLevelItem(0))
+
+    received = {}
+    dock.deleteRecordRequested.connect(lambda rid: received.setdefault("id", rid))
+
+    key_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
+    dock.eventFilter(dock._tree, key_event)
+
+    assert received.get("id") == record.id
+
+
+def test_delete_key_on_selected_folder_prompts_and_emits_signal(qtbot, monkeypatch):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    dock = ProjectExplorerDock()
+    qtbot.addWidget(dock)
+    monkeypatch.setattr(
+        "genome_workbench.ui.docks.project_explorer_dock.QMessageBox.question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+    )
+    folder = Folder(name="Isolates")
+    dock.set_data([], [folder])
+    dock._tree.setCurrentItem(dock._tree.topLevelItem(0))
+
+    received = {}
+    dock.deleteFolderRequested.connect(lambda fid: received.setdefault("id", fid))
+
+    key_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
+    dock.eventFilter(dock._tree, key_event)
+
+    assert received.get("id") == folder.id
+
+
+def test_delete_key_with_no_selection_does_nothing(qtbot, monkeypatch):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    dock = ProjectExplorerDock()
+    qtbot.addWidget(dock)
+    warning_called = []
+    monkeypatch.setattr(
+        "genome_workbench.ui.docks.project_explorer_dock.QMessageBox.warning",
+        staticmethod(lambda *a, **k: warning_called.append(True) or QMessageBox.StandardButton.Yes),
+    )
+
+    key_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
+    dock.eventFilter(dock._tree, key_event)
+
+    assert not warning_called
+
+
 def test_dispatch_new_folder_emits_name_and_parent(qtbot, monkeypatch):
     dock = ProjectExplorerDock()
     qtbot.addWidget(dock)

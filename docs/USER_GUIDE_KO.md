@@ -1,6 +1,6 @@
 # DNAvigator 사용자 매뉴얼 (한국어)
 
-버전: 0.2.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
+버전: 0.3.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
 
 ## 1. 설치
 
@@ -51,6 +51,7 @@ project를 열면 왼쪽 **Project Explorer**, 가운데 **Genome Map / Circular
 - **feature 경계 근처 드래그**: 선택된 단일 구간 feature의 시작/끝 좌표를 조정한다(compound feature는 지원하지 않으며 안내 메시지가 뜬다).
 - 상단 툴바: **Zoom In / Zoom Out / Fit Genome / Zoom to Selection** 버튼.
 - 하단 **minimap**: 클릭하거나 드래그하면 그 위치로 이동한다.
+- **Ctrl+C**: 드래그로 선택한 구간이 있으면 그 구간의 원시 염기서열을, feature를 클릭해 선택한 상태라면 그 feature의 생물학적 서열(strand/join 반영)을 클립보드로 복사한다.
 
 확대 수준에 따라 자동으로:
 - 전체 genome: 밀도 그래프
@@ -63,6 +64,11 @@ Circular Map에서도 마우스만으로 조작할 수 있다:
 - **마우스 휠**: 확대/축소(중심 기준).
 - **빈 배경 위에서 드래그**: 링을 회전시킨다(관심 있는 유전자를 원하는 각도로 돌려서 볼 수 있다). feature 위에서 드래그를 시작하면 대신 선택된다(기존 클릭 동작 유지).
 - 다른 record를 선택하면 확대/회전 상태는 자동으로 초기화된다.
+- **Ctrl+C**: 선택된 feature의 생물학적 서열을 클립보드로 복사한다.
+
+Feature Table에서도 여러 행을 선택하고 **Ctrl+C**를 누르면 탭으로 구분된 텍스트(Label/Type/Start/End/Strand/Length/Gene/Product)로 복사되어 Excel 등에 바로 붙여넣을 수 있다.
+
+Project Explorer에서 record나 폴더를 선택하고 **Delete** 키를 누르면 우클릭 메뉴의 삭제와 동일한 확인 절차를 거쳐 삭제된다.
 
 ## 5. 유전자/qualifier로 찾기 (Find)
 
@@ -153,11 +159,26 @@ hit을 선택한 뒤 **Apply as Annotation...** 을 클릭한다. 대화상자�
 - **File > Export GFF3...**: 서열을 같은 파일에 포함(`##FASTA`)할지 별도 파일로 둘지 물어본다.
 - **File > Export Nucleotide FASTA...** / **Export Protein FASTA (protein records)...** / **Export Protein FASTA (CDS translations)...** / **Export FFN (CDS nucleotide)...** / **Export Feature Table CSV...**
 
-## 13. Project 동시 열기 / 비정상 종료
+## 13. Feature 색상 커스터마이징과 이미지 내보내기
+
+**View > Feature Colors...**를 열면 feature 타입별(CDS, gene, tRNA 등) 색상을 바꿀 수 있다.
+
+- 색상 스와치를 클릭하면 색상 선택 대화상자가 뜬다.
+- **Add Type...**으로 기본 목록에 없는 타입(예: ncRNA, terminator)의 색도 지정할 수 있다.
+- 행별 **Reset** 버튼 또는 **Reset All to Defaults**로 기본값으로 되돌릴 수 있다.
+- 설정한 색은 project가 아니라 사용자 전역으로 저장되어(`%LOCALAPPDATA%\DNAvigator\feature_colors.json`) 다른 project를 열어도 그대로 적용된다.
+
+**View > Export View as Image...**로 현재 보고 있는 Genome Map 또는 Circular Map 탭을 그림 파일로 저장할 수 있다(Feature Table 탭에서는 사용할 수 없음).
+
+- **PNG**를 선택하면 해상도 배율(1x/2x/3x/4x)을 물어본다 — 논문이나 인쇄용으로 쓰려면 3x 이상을 권장한다.
+- **SVG**를 선택하면 벡터 파일로 저장되어 어떤 크기로 확대해도 깨지지 않는다.
+- feature 화살표는 은은한 그라데이션으로 그려져 화면 스크린샷보다 또렷하게 인쇄된다.
+
+## 14. Project 동시 열기 / 비정상 종료
 
 같은 project 파일을 다른 DNAvigator 창(또는 이전에 비정상 종료된 세션)이 이미 열고 있으면, **Open Project**시 알림이 뜨고 **읽기 전용으로 열기** 또는 **강제로 편집 모드로 열기**(다른 인스턴스가 실제로 열려있지 않다고 확신할 때만) 중 선택할 수 있다.
 
-## 14. 문제 해결
+## 15. 문제 해결
 
 - **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\DNAvigator\logs`의 로그 파일을 확인한다.
 - **`DNAvigator.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\DNAvigator\last_self_test_output.json`에 모두 기록된다.

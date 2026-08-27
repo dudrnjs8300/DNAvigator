@@ -12,9 +12,13 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import (
+    QBrush,
     QColor,
     QFont,
     QFontMetrics,
+    QKeyEvent,
+    QKeySequence,
+    QLinearGradient,
     QMouseEvent,
     QPainter,
     QPaintEvent,
@@ -24,9 +28,10 @@ from PySide6.QtGui import (
     QResizeEvent,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QToolTip, QWidget
+from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
 from genome_workbench.domain.coordinates import display_from_internal
+from genome_workbench.domain.locations import extract_sequence
 from genome_workbench.domain.models import Feature, SequenceRecord
 from genome_workbench.domain.sequence_ops import reverse_complement, translate
 from genome_workbench.ui.rendering.feature_colors import feature_color
@@ -68,6 +73,11 @@ class GenomeCanvas(QWidget):
         self._resize_feature: Feature | None = None
 
         self._mono_font = QFont("Consolas", 10)
+        self._color_overrides: dict[str, str] = {}
+
+    def set_color_overrides(self, overrides: dict[str, str]) -> None:
+        self._color_overrides = overrides
+        self.update()
 
     # -- Public API --------------------------------------------------------
 
@@ -202,6 +212,7 @@ class GenomeCanvas(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), self.palette().base())
         if self._record is None or self._viewport is None:
             painter.setPen(QPen(self._muted_color()))
@@ -279,7 +290,7 @@ class GenomeCanvas(QWidget):
             right = min(self.width() + 10, right)
             if right <= left:
                 continue
-            color = feature_color(feature.type)
+            color = feature_color(feature.type, self._color_overrides)
             is_selected = feature.id == self._selected_feature_id
             is_hover = feature.id == self._hover_feature_id
             painter.setPen(
@@ -290,7 +301,8 @@ class GenomeCanvas(QWidget):
                     2 if is_selected else 1,
                 )
             )
-            painter.setBrush(color.lighter(120) if is_hover else color)
+            base_color = color.lighter(120) if is_hover else color
+            painter.setBrush(_vertical_sheen_gradient(base_color, top, _LANE_HEIGHT - 4))
             _draw_strand_arrow(painter, left, top, right, _LANE_HEIGHT - 4, feature.strand)
 
             if with_labels:
@@ -379,6 +391,36 @@ class GenomeCanvas(QWidget):
         painter.drawLine(int(left), _RULER_HEIGHT, int(left), self.height())
         painter.drawLine(int(right), _RULER_HEIGHT, int(right), self.height())
 
+    # -- Keyboard interaction -----------------------------------------------------
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self._copy_selection_to_clipboard()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _copy_selection_to_clipboard(self) -> None:
+        """Ctrl+C copies whichever selection is currently active: a
+        drag-selected range copies its raw nucleotide text; a clicked feature
+        copies its biological sequence (strand/join-aware, same extraction
+        used for BLAST queries and "extract as new record")."""
+        if self._record is None:
+            return
+        text: str | None = None
+        if self._selection is not None:
+            start0, end0 = self._selection
+            if end0 > start0:
+                text = self._record.sequence[start0:end0]
+        elif self._selected_feature_id is not None:
+            feature = self._index.by_id(self._selected_feature_id)
+            if feature is not None:
+                text = extract_sequence(
+                    self._record.sequence, feature.parts, feature.strand, self._record.length
+                )
+        if text:
+            QApplication.clipboard().setText(text)
+
     # -- Mouse interaction -------------------------------------------------------
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
@@ -409,6 +451,7 @@ class GenomeCanvas(QWidget):
 
         clicked_feature = self._feature_at_pixel(int(x), int(y))
         if clicked_feature is not None:
+            self._selection = None
             self._selected_feature_id = clicked_feature.id
             self.featureClicked.emit(clicked_feature.id)
             self.update()
@@ -534,6 +577,17 @@ class GenomeCanvas(QWidget):
         if seq is None:
             return None
         return translate(seq, genetic_code=genetic_code).protein
+
+
+def _vertical_sheen_gradient(base_color: QColor, top: float, height: float) -> QBrush:
+    """A subtle lighter-to-darker vertical gradient instead of a flat fill --
+    a cheap way to make feature bars read as "designed" rather than a plain
+    rectangle, matching the look of other genome browsers, without touching
+    the underlying shape (still the same strand-arrow polygon)."""
+    gradient = QLinearGradient(0, top, 0, top + height)
+    gradient.setColorAt(0.0, base_color.lighter(125))
+    gradient.setColorAt(1.0, base_color.darker(108))
+    return QBrush(gradient)
 
 
 def _draw_strand_arrow(
