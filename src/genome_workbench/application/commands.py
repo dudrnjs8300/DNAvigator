@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from genome_workbench.domain.models import Feature
+from genome_workbench.domain.models import Feature, SequenceRecord, Topology
 from genome_workbench.infrastructure.persistence.sqlite_repository import ProjectRepository
 
 
@@ -58,6 +58,30 @@ class FeatureDeleteCommand:
 
     def undo(self) -> None:
         self._repo.save_feature(self._feature)
+
+
+class RecordTopologyChangeCommand:
+    def __init__(
+        self, repo: ProjectRepository, record_id: str, before: Topology, after: Topology
+    ) -> None:
+        self._repo = repo
+        self._record_id = record_id
+        self._before = before
+        self._after = after
+        self.description = f"Set topology to {after.value}"
+
+    def _apply(self, topology: Topology) -> SequenceRecord:
+        record = self._repo.get_record(self._record_id)
+        assert record is not None, f"record {self._record_id} not found"
+        record.topology = topology
+        self._repo.save_record(record)
+        return record
+
+    def do(self) -> None:
+        self._apply(self._after)
+
+    def undo(self) -> None:
+        self._apply(self._before)
 
 
 class BatchCommand:

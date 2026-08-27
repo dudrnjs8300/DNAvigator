@@ -20,18 +20,57 @@ from genome_workbench.version import APP_NAME, APP_VERSION, SCHEMA_VERSION
 
 def _attach_console_for_cli_if_frozen() -> None:
     """When packaged as a windowed (no-console) PyInstaller build, CLI flags
-    need a console to print to. Attach the parent terminal's console (the one
-    the user ran ``GenomeWorkbench.exe --version`` from) instead of forcing a
-    console window to always appear (which would violate the "no console
-    window on normal launch" requirement).
+    need somewhere to print to -- PyInstaller sets sys.stdout/stderr to None
+    for ``console=False`` builds regardless of how the process was launched.
+
+    Two cases, told apart by ``GetFileType`` on the inherited STD_OUTPUT_HANDLE:
+
+    - The caller redirected output to a file or pipe (``exe --version >
+      out.txt``, or being invoked from a script/CI that captures output via a
+      pipe). Windows already handed this process a real, valid handle for
+      that file/pipe regardless of subsystem; rebuild sys.stdout/stderr from
+      it directly. Getting this branch wrong is what silently dropped output
+      before: unconditionally attaching to the parent's console and writing
+      to CONOUT$ sends the text to the (invisible, background) console
+      screen buffer instead of the file/pipe the caller actually asked for
+      -- the process still exits 0, but the redirected output is empty.
+    - Nothing was redirected (an interactive console launch, or a
+      double-click). No handle is inherited in that case, so attach to the
+      parent terminal's console instead of forcing a console window to
+      always appear (which would violate the "no console window on normal
+      launch" requirement).
     """
     if sys.platform != "win32" or not getattr(sys, "frozen", False):
         return
     if len(sys.argv) <= 1:
         return
     import ctypes
+    import msvcrt
+    import os
 
     kernel32 = ctypes.windll.kernel32
+    std_output_handle, std_error_handle = -11, -12
+    file_type_disk, file_type_pipe = 1, 3
+
+    def _redirected_stream(std_handle: int, mode: str):
+        handle = kernel32.GetStdHandle(std_handle)
+        if not handle or handle == -1:
+            return None
+        file_type = kernel32.GetFileType(handle) & 0x0F
+        if file_type not in (file_type_disk, file_type_pipe):
+            return None
+        fd = msvcrt.open_osfhandle(handle, os.O_WRONLY if "w" in mode else os.O_RDONLY)
+        return os.fdopen(fd, mode, encoding="utf-8")
+
+    redirected_stdout = _redirected_stream(std_output_handle, "w")
+    redirected_stderr = _redirected_stream(std_error_handle, "w")
+    if redirected_stdout is not None or redirected_stderr is not None:
+        if redirected_stdout is not None:
+            sys.stdout = redirected_stdout
+        if redirected_stderr is not None:
+            sys.stderr = redirected_stderr
+        return
+
     attach_parent_process = -1
     if kernel32.AttachConsole(attach_parent_process):
         sys.stdout = open("CONOUT$", "w", encoding="utf-8")  # noqa: SIM115
@@ -111,13 +150,26 @@ def _cmd_smoke_test(fixture_dir: str, output_dir: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    _attach_console_for_cli_if_frozen()
     parser = argparse.ArgumentParser(prog="GenomeWorkbench")
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--diagnostics", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--smoke-test", nargs=2, metavar=("FIXTURE_DIR", "OUTPUT_DIR"))
+    parser.add_argument(
+        "project_path",
+        nargs="?",
+        default=None,
+        help="Optional .gwbproj file to open on launch (Windows passes this "
+        "as %%1 when a project file is double-clicked via the file "
+        "association set up by the installer).",
+    )
     args = parser.parse_args(argv)
+
+    # Only attach to a console for genuine CLI diagnostic usage -- a plain
+    # project-path launch (double-clicking a .gwbproj file) is a GUI launch
+    # and must not touch stdio at all.
+    if args.version or args.diagnostics or args.self_test or args.smoke_test:
+        _attach_console_for_cli_if_frozen()
 
     if args.version:
         return _cmd_version()
@@ -130,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from genome_workbench.app import run_app
 
-    return run_app()
+    return run_app(open_project_path=args.project_path)
 
 
 if __name__ == "__main__":

@@ -382,6 +382,11 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
+        self.open_project_at_path(path)
+
+    def open_project_at_path(self, path: str) -> None:
+        """Shared by the Open Project... dialog and startup (double-clicking
+        a .gwbproj file, or the file-association command line %1)."""
         try:
             self.project_service.open(Path(path))
         except ProjectLockedError as exc:
@@ -624,15 +629,24 @@ class MainWindow(QMainWindow):
             return
         self._log(f"{title}: wrote {count} record(s)/row(s) to {destination}")
 
+    def _refresh_current_record_after_undo_redo(self) -> None:
+        # Re-fetch rather than just re-listing features: some commands (e.g.
+        # RecordTopologyChangeCommand) mutate the record itself, not just its
+        # features, and _refresh_current_record_views() reads from the cached
+        # self._current_record.
+        if self._current_record is not None:
+            self._current_record = self.project_service.get_record(self._current_record.id)
+        self._refresh_current_record_views()
+
     def _on_undo(self) -> None:
         if self.project_service.undo_stack.undo():
-            self._refresh_features_only()
+            self._refresh_current_record_after_undo_redo()
             self._update_action_states()
             self._log("Undo")
 
     def _on_redo(self) -> None:
         if self.project_service.undo_stack.redo():
-            self._refresh_features_only()
+            self._refresh_current_record_after_undo_redo()
             self._update_action_states()
             self._log("Redo")
 
@@ -676,6 +690,7 @@ class MainWindow(QMainWindow):
             self._current_record = record
             self._refresh_current_record_views()
             self._select_default_tab_for_current_record()
+        self._update_action_states()
         self._log(f"Set {record.display_id} topology to {topology_value}")
 
     def _on_delete_record_requested(self, record_id: str) -> None:

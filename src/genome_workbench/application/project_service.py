@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from genome_workbench.application.commands import UndoStack
+from genome_workbench.application.commands import RecordTopologyChangeCommand, UndoStack
 from genome_workbench.domain.events import AuditEvent, EventType
 from genome_workbench.domain.models import (
     Feature,
@@ -126,11 +126,13 @@ class ProjectService:
         record = repo.get_record(record_id)
         if record is None:
             raise NoOpenProjectError(f"record {record_id} not found")
-        record.topology = topology
-        repo.save_record(record)
+        command = RecordTopologyChangeCommand(repo, record_id, record.topology, topology)
+        self.undo_stack.push(command)
         self.log_audit(EventType.FEATURE_UPDATE, record_id, f"Set topology to {topology.value}")
         self.touch()
-        return record
+        updated = repo.get_record(record_id)
+        assert updated is not None
+        return updated
 
     # -- Folders ---------------------------------------------------------------
 

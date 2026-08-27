@@ -256,6 +256,71 @@ def test_blast_run_and_apply_hit_as_annotation_end_to_end(qtbot, tmp_path, monke
     assert provenance.tool_name == "blastn"
 
 
+def test_blastp_run_and_apply_hit_as_annotation_end_to_end(qtbot, tmp_path, monkeypatch):
+    """The blastn UI e2e test above exercises the whole dispatch/dialog path
+    for one program; this exercises the same path selecting blastp instead
+    (RELEASE_TEST_REPORT.md AT-07 gap: blastp was only verified against a
+    real binary at the service layer, never through the UI dispatch code)."""
+    monkeypatch.setattr(CallableWorker, "start", lambda self: self.run())
+
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    record = _open_project_with_fasta(window, tmp_path, monkeypatch)
+    window._on_record_selected(record.id)
+
+    from genome_workbench.infrastructure.blast.detector import REQUIRED_EXECUTABLES
+
+    window._blast_installation = BlastInstallation(
+        directory=str(FAKE_BLAST_DIR),
+        executables={name: str(FAKE_BLAST_DIR / f"{name}.bat") for name in REQUIRED_EXECUTABLES},
+        versions={name: "fake 1.0" for name in REQUIRED_EXECUTABLES},
+    )
+    window.blast_panel.set_installation(window._blast_installation)
+    assert window._blast_installation.is_fully_installed()
+
+    db_source_fasta = tmp_path / "db_source.faa"
+    db_source_fasta.write_text(">subject1\nMKVLATGCDEFGHIK\n")
+
+    def _fake_create_db_exec(self):
+        self._source_edit.setText(str(db_source_fasta))
+        self._molecule_combo.setCurrentText("protein")
+        self._name_edit.setText("test_prot_db")
+        return 1
+
+    monkeypatch.setattr(CreateBlastDatabaseDialog, "exec", _fake_create_db_exec)
+    window._on_create_database_requested()
+
+    databases = window.blast_service.list_databases()
+    assert len(databases) == 1
+
+    window._start_blast_from_selection(record, 100, 400)
+    window.blast_panel._database_list.setCurrentRow(0)
+    window.blast_panel._program_combo.setCurrentText("blastp")
+
+    window._on_run_blast_requested()
+
+    assert window._last_blast_result is not None
+    assert len(window._last_blast_result.hits) == 1
+    assert window._last_blast_result.hits[0].subject_id == "fake_protein_subject_1"
+
+    window.blast_panel._hit_table.selectRow(0)
+
+    def _fake_apply_hit_exec(self):
+        return 1
+
+    monkeypatch.setattr(ApplyBlastHitDialog, "exec", _fake_apply_hit_exec)
+    window._on_apply_blast_hit_requested()
+
+    features = window.project_service.list_features(record.id)
+    blast_features = [f for f in features if f.provenance_id is not None]
+    assert len(blast_features) == 1
+    applied = blast_features[0]
+    provenance = window.project_service.get_repository().get_provenance(applied.provenance_id)
+    assert provenance is not None
+    assert provenance.subject_id == "fake_protein_subject_1"
+    assert provenance.tool_name == "blastp"
+
+
 def test_inspector_advanced_qualifier_editor_add_and_apply(qtbot, tmp_path, monkeypatch):
     from genome_workbench.ui.docks.inspector_dock import InspectorDock
 
@@ -394,6 +459,38 @@ def test_circular_topology_drives_which_map_tab_is_available(qtbot, tmp_path, mo
     window._on_record_selected(linear_record.id)
     assert window._tabs.currentWidget() is window.genome_map_page
     assert window._tabs.isTabEnabled(circular_tab_index) is False
+
+
+def test_topology_change_is_undoable(qtbot, tmp_path, monkeypatch):
+    """Previously ProjectService.set_record_topology bypassed the undo stack
+    entirely (KNOWN_LIMITATIONS.md gap) -- Ctrl+Z did nothing after flipping
+    linear/circular by mistake."""
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    _new_empty_project(window, tmp_path, monkeypatch, "Topology Undo Project")
+    _import_genbank_fixture(window, "annotated_linear.gbk", monkeypatch)
+    record = window.project_service.list_records()[0]
+    window._on_record_selected(record.id)
+
+    circular_tab_index = window._tabs.indexOf(window.circular_canvas)
+    assert record.topology == Topology.LINEAR
+    assert window._tabs.isTabEnabled(circular_tab_index) is False
+    assert window.action_undo.isEnabled() is False
+
+    window._on_topology_change_requested(record.id, Topology.CIRCULAR.value)
+    assert window._current_record.topology == Topology.CIRCULAR
+    assert window._tabs.isTabEnabled(circular_tab_index) is True
+    assert window.action_undo.isEnabled() is True
+
+    window._on_undo()
+    assert window._current_record.topology == Topology.LINEAR
+    assert window._tabs.isTabEnabled(circular_tab_index) is False
+    assert window.action_undo.isEnabled() is False
+    assert window.action_redo.isEnabled() is True
+
+    window._on_redo()
+    assert window._current_record.topology == Topology.CIRCULAR
+    assert window._tabs.isTabEnabled(circular_tab_index) is True
 
 
 def test_find_feature_by_gene_name_navigates_to_match(qtbot, tmp_path, monkeypatch):

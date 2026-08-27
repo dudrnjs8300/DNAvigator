@@ -201,3 +201,25 @@ def test_open_locked_project_offers_read_only_via_ui(qtbot, tmp_path, monkeypatc
 
     window.project_service.close()
     other_instance.close()
+
+
+def test_open_project_at_path_used_for_startup_file_association(qtbot, tmp_path):
+    """MainWindow.open_project_at_path is what genome_workbench.app.run_app
+    calls when launched with a project path (e.g. Windows passing %1 when a
+    .gwbproj file is double-clicked via the installer's file association) --
+    this is the same code path _on_open_project uses after its file dialog,
+    exercised directly without a dialog in the loop."""
+    from genome_workbench.application.project_service import ProjectService
+
+    project_path = tmp_path / "startup" / "project.gwbproj"
+    setup_service = ProjectService()
+    setup_service.create_new(project_path, "Startup Project")
+    setup_service.close()
+
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+
+    window.open_project_at_path(str(project_path))
+
+    assert window.project_service.is_open
+    assert not window.project_service.is_read_only

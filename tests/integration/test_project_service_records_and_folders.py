@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from genome_workbench.application.project_service import NoOpenProjectError, ProjectService
-from genome_workbench.domain.models import MoleculeType, SequenceRecord
+from genome_workbench.domain.models import MoleculeType, SequenceRecord, Topology
 
 
 @pytest.fixture
@@ -152,3 +152,23 @@ def test_mutations_require_writable_project(tmp_path: Path):
     with pytest.raises(ProjectReadOnlyError):
         reader.move_record_to_folder("whatever", folder.id)
     reader.close()
+
+
+def test_set_record_topology_is_undoable(service: ProjectService):
+    """Record topology (linear/circular) previously bypassed the undo stack
+    entirely (KNOWN_LIMITATIONS.md gap) -- a mis-click had no way back short
+    of manually flipping it again."""
+    record = _add_record(service, "r1")
+    record.topology = Topology.LINEAR
+    service.get_repository().save_record(record)
+
+    updated = service.set_record_topology(record.id, Topology.CIRCULAR)
+    assert updated.topology == Topology.CIRCULAR
+    assert service.get_record(record.id).topology == Topology.CIRCULAR
+    assert service.undo_stack.can_undo
+
+    assert service.undo_stack.undo() is True
+    assert service.get_record(record.id).topology == Topology.LINEAR
+
+    assert service.undo_stack.redo() is True
+    assert service.get_record(record.id).topology == Topology.CIRCULAR

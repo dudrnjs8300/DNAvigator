@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
+from PySide6.QtTest import QTest
 
 from genome_workbench.domain.qualifiers import QualifierSet
 from genome_workbench.ui.main_window import MainWindow
@@ -97,6 +98,32 @@ def test_drag_on_empty_background_rotates_the_ring(qtbot, tmp_path, monkeypatch)
     qtbot.mouseRelease(canvas, Qt.MouseButton.LeftButton, pos=end)
 
     assert canvas.viewport_transform.rotation_degrees != 0.0
+
+
+def test_shift_drag_on_empty_background_pans_the_ring(qtbot, tmp_path, monkeypatch):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    window.resize(900, 700)
+    qtbot.addWidget(window)
+    with qtbot.waitExposed(window):
+        window.show()
+    _open_circular_project(window, tmp_path, monkeypatch)
+
+    canvas = window.circular_canvas
+    assert canvas.viewport_transform.pan_x == 0.0
+    assert canvas.viewport_transform.pan_y == 0.0
+    assert canvas.viewport_transform.rotation_degrees == 0.0
+
+    cx, cy = canvas.width() / 2, canvas.height() / 2
+    start = QPoint(int(cx), int(cy - 60))
+    end = QPoint(int(cx + 40), int(cy - 20))
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ShiftModifier, start)
+    qtbot.mouseMove(canvas, pos=end)
+    QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ShiftModifier, end)
+
+    # Shift+drag pans (translates the ring center), not rotates.
+    assert canvas.viewport_transform.pan_x != 0.0 or canvas.viewport_transform.pan_y != 0.0
+    assert canvas.viewport_transform.rotation_degrees == 0.0
 
 
 def test_clicking_a_feature_still_selects_instead_of_rotating(qtbot, tmp_path, monkeypatch):

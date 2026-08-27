@@ -5,8 +5,9 @@ table / inspector via MainWindow. Origin is drawn at 12 o'clock (before any
 rotation is applied), genome coordinate increasing clockwise.
 
 Mouse wheel zooms (anchored on the ring center); left-drag starting on empty
-background (not on a feature) rotates the ring; left-drag on a feature keeps
-the existing click-to-select behavior.
+background (not on a feature) rotates the ring, or pans it if Shift is held
+(same modifier convention as the linear canvas's Shift+wheel pan); left-drag
+on a feature keeps the existing click-to-select behavior.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ class CircularGenomeCanvas(QWidget):
         self._hover_feature_id: str | None = None
         self._transform = CircularViewportTransform()
         self._rotate_drag_last_angle: float | None = None
+        self._pan_drag_last_pos: QPointF | None = None
 
     def set_record(self, record: SequenceRecord | None, features: list[Feature]) -> None:
         self._record = record
@@ -194,6 +196,10 @@ class CircularGenomeCanvas(QWidget):
             self._selected_feature_id = feature.id
             self.featureClicked.emit(feature.id)
             self.update()
+        elif event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            # empty background + Shift: pan (same modifier convention as the
+            # linear canvas's Shift+wheel pan, ui/views/genome_canvas.py)
+            self._pan_drag_last_pos = event.position()
         else:
             # empty background: start a rotate-drag instead of a selection
             self._rotate_drag_last_angle = self._angle_at_point_degrees(
@@ -201,6 +207,14 @@ class CircularGenomeCanvas(QWidget):
             )
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._pan_drag_last_pos is not None and (event.buttons() & Qt.MouseButton.LeftButton):
+            dx = event.position().x() - self._pan_drag_last_pos.x()
+            dy = event.position().y() - self._pan_drag_last_pos.y()
+            self._transform = self._transform.panned(dx, dy)
+            self._pan_drag_last_pos = event.position()
+            self.update()
+            return
+
         if self._rotate_drag_last_angle is not None and (
             event.buttons() & Qt.MouseButton.LeftButton
         ):
@@ -229,6 +243,7 @@ class CircularGenomeCanvas(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self._rotate_drag_last_angle = None
+            self._pan_drag_last_pos = None
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         feature = self._feature_at_point(event.position().x(), event.position().y())
