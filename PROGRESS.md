@@ -8,7 +8,7 @@
 - **GitHub**: 사용자 승인 하에 `https://github.com/dudrnjs8300/genome-workbench`(public) 생성, 전체 히스토리 push, `test.yml`(품질 게이트) + `windows-release.yml`(실제 빌드+패키징+clean 러너 exe 검증) 둘 다 실제로 실행해 통과 확인. 이 과정에서 (1) `test.yml`이 `main`만 감시해 `master` push에 전혀 반응하지 않던 설정 버그, (2) `windows-release.yml`이 pwsh에서 exe를 직접 호출할 때 stdout/stderr가 캡처되지 않아 원인 불명으로 실패하던 문제(→ `Start-Process` 명시적 리다이렉트로 해결)를 발견해 고쳤다.
 - 전체 테스트: **192 passed** (`pytest tests -q`, `QT_QPA_PLATFORM=offscreen`; 실제 BLAST+ 테스트 2건 포함하며 BLAST+ 미설치 환경에서는 자동 skip).
 - `ruff format --check`, `ruff check`, `mypy src/genome_workbench` 모두 clean.
-- Portable ZIP + **Installer(.exe)** 둘 다 빌드/검증 완료: `release/GenomeWorkbench-0.1.0-win-x64-portable.zip`, `release/GenomeWorkbench-0.1.0-win-x64-setup.exe` (+ 각각 `.sha256`). Installer는 silent 설치(관리자 권한 불필요, `%LOCALAPPDATA%\Programs`) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 머신에서 실제로 검증됨.
+- Portable ZIP + **Installer(.exe)** 둘 다 빌드/검증 완료: `release/DNAvigator-0.1.0-win-x64-portable.zip`, `release/DNAvigator-0.1.0-win-x64-setup.exe` (+ 각각 `.sha256`). Installer는 silent 설치(관리자 권한 불필요, `%LOCALAPPDATA%\Programs`) → `--self-test`/`--smoke-test` → Start Menu 바로가기 확인 → silent 제거까지 이 머신에서 실제로 검증됨.
 - **실제 NCBI BLAST+ 2.17.0(win64)**을 공식 FTP에서 설치(MD5 확인)해 blastn/blastp/database 생성/좌표 매핑/annotation 적용을 전부 실제 바이너리로 검증(`tests/integration/test_blast_real_installation.py`, BLAST+ 없는 환경에서는 자동 skip). 이 과정에서 `detector.py`의 버전 하드코딩 버그(2.16.0+만 인식)를 발견해 고쳤다.
 - 개발 환경 Python은 3.14.6 (3.12 미설치, D-001 참고). `requires-python`은 `>=3.12` 유지.
 
@@ -116,7 +116,7 @@
 ### 이번 재설계에서 발견/수정한 버그
 
 - `QMenu.exec()`는 PySide6/Shiboken 바인딩 메서드라서 `monkeypatch.setattr(QMenu, "exec", ...)`가 조용히 무시되고 실제 모달이 떠서 headless 환경에서 영원히 멈춘다. `_on_canvas_context_menu`(메뉴 표시)와 `_dispatch_selection_action`(로직)을 분리해 테스트는 후자를 직접 호출하도록 리팩터링했다 — 프로덕션 동작은 동일하다.
-- `BlastService`가 프로젝트와 무관하게 `%LOCALAPPDATA%/GenomeWorkbench/blast/catalog.json`을 전역으로 읽고 쓰는데, 테스트가 매번 실제 사용자 프로필을 오염시켰다. `BlastService(work_dir=...)`와 `MainWindow(blast_work_dir=...)`로 주입 가능하게 고쳐 테스트는 `tmp_path`를 쓰도록 했다(프로덕션 기본값은 기존과 동일하게 전역 카탈로그 — 여러 project에서 DB를 재사용하는 것은 의도된 설계).
+- `BlastService`가 프로젝트와 무관하게 `%LOCALAPPDATA%/DNAvigator/blast/catalog.json`을 전역으로 읽고 쓰는데, 테스트가 매번 실제 사용자 프로필을 오염시켰다. `BlastService(work_dir=...)`와 `MainWindow(blast_work_dir=...)`로 주입 가능하게 고쳐 테스트는 `tmp_path`를 쓰도록 했다(프로덕션 기본값은 기존과 동일하게 전역 카탈로그 — 여러 project에서 DB를 재사용하는 것은 의도된 설계).
 
 ### 아직 안 한 것 (이번 재설계 범위 밖)
 
@@ -138,5 +138,5 @@ P0 핵심 기능은 전부 구현·테스트되었다. 진짜로 남은 것은 �
 
 ## 알려진 리스크 / 재검증 필요 항목
 
-- `docs/DECISIONS.md` D-005: PyInstaller windowed 빌드에서 CLI 플래그 사용 시 `AttachConsole`로 부모 콘솔에 출력하는 경로는 실제 대화형 터미널(cmd.exe/PowerShell)과 GitHub Actions runner에서 아직 재검증하지 못했다(이 개발 sandbox 자체에 진짜 콘솔이 없어 확인 불가). 대신 모든 CLI 출력은 `%LOCALAPPDATA%/GenomeWorkbench/last_*_output.json`에도 항상 기록하도록 만들어 콘솔 여부와 무관하게 검증 가능하게 했다.
+- `docs/DECISIONS.md` D-005: PyInstaller windowed 빌드에서 CLI 플래그 사용 시 `AttachConsole`로 부모 콘솔에 출력하는 경로는 실제 대화형 터미널(cmd.exe/PowerShell)과 GitHub Actions runner에서 아직 재검증하지 못했다(이 개발 sandbox 자체에 진짜 콘솔이 없어 확인 불가). 대신 모든 CLI 출력은 `%LOCALAPPDATA%/DNAvigator/last_*_output.json`에도 항상 기록하도록 만들어 콘솔 여부와 무관하게 검증 가능하게 했다.
 - `.github/workflows/*.yml`은 로컬에서 동일 명령을 수동 실행해 통과를 확인했을 뿐, 실제 GitHub Actions에서 실행된 적은 없다(원격 저장소 push 권한/승인 필요).

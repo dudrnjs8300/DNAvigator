@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-GenomeWorkbench bundles or depends on the following third-party software.
+DNAvigator bundles or depends on the following third-party software.
 This list will be regenerated automatically from the locked dependency set
 before each release (Phase 8); it is maintained by hand for now.
 

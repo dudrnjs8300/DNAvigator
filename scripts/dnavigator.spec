@@ -1,6 +1,10 @@
 # PyInstaller onedir spec. Qt DLLs stay as separate files (not single-file
 # bundling) for faster startup, easier diagnosis, and simpler LGPL compliance
 # (see docs/LICENSING.md).
+#
+# Product is branded "DNAvigator" (renamed from GenomeWorkbench for
+# searchability, see docs/DECISIONS.md); the Python package itself stays
+# genome_workbench -- that's internal plumbing, not user-facing.
 
 from pathlib import Path
 
@@ -29,7 +33,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="GenomeWorkbench",
+    name="DNAvigator",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -49,5 +53,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="GenomeWorkbench",
+    name="DNAvigator",
 )

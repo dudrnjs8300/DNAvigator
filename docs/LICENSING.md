@@ -2,7 +2,7 @@
 
 ## 애플리케이션 자체
 
-- `GenomeWorkbench` 자체 코드는 MIT 라이선스로 배포한다 (`LICENSE` 참고). 확정 전까지는 초안이며, 아래 third-party 조건을 검토한 뒤 최종 확정한다.
+- `DNAvigator` 자체 코드는 MIT 라이선스로 배포한다 (`LICENSE` 참고). 확정 전까지는 초안이며, 아래 third-party 조건을 검토한 뒤 최종 확정한다.
 
 ## PySide6 / Qt
 

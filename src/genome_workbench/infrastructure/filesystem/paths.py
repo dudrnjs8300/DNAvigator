@@ -1,6 +1,6 @@
 """Windows user-data directory layout.
 
-``%LOCALAPPDATA%/GenomeWorkbench`` holds settings, logs, and app-managed
+``%LOCALAPPDATA%/DNAvigator`` holds settings, logs, and app-managed
 tools. It is distinct from project files, which live wherever the user
 chooses to save them.
 """
@@ -14,7 +14,7 @@ from genome_workbench.version import APP_NAME
 
 
 def app_data_dir() -> Path:
-    """Return ``%LOCALAPPDATA%/GenomeWorkbench`` (or an XDG/home fallback off-Windows)."""
+    """Return ``%LOCALAPPDATA%/DNAvigator`` (or an XDG/home fallback off-Windows)."""
     local_app_data = os.environ.get("LOCALAPPDATA")
     base = Path(local_app_data) if local_app_data else Path.home() / ".local" / "share"
     directory = base / APP_NAME

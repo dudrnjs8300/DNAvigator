@@ -24,20 +24,20 @@
 
 ## D-005: windowed(no-console) exe에서 CLI 진단 출력을 파일에도 항상 기록
 
-- **문제**: `GenomeWorkbench.exe`는 GUI 실행 시 콘솔 창이 뜨면 안 되므로(`console=False`) PyInstaller onedir로 빌드했다. `--self-test` 등 CLI 플래그 사용 시에는 부모 콘솔에 `AttachConsole`로 붙어 출력하도록 구현했는데, 실제 대화형 터미널(cmd.exe/PowerShell)에서는 동작이 기대되지만 이 개발 sandbox 자체가 진짜 Win32 콘솔을 제공하지 않아(git bash의 mintty, 자동화 도구의 pipe 리다이렉션) `AttachConsole`이 실패하고 표준출력이 소실되는 현상을 발견했다.
-- **판단**: 콘솔 유무에 의존하지 않는 검증 가능성을 확보하기 위해, `--version`/`--diagnostics`/`--self-test`/`--smoke-test`의 출력을 **항상** `%LOCALAPPDATA%/GenomeWorkbench/last_*_output.json` 파일에도 기록한다(표준출력 시도는 best-effort로 유지). 이는 spec 13.4의 "진단 결과 내보내기" 요구와도 부합한다.
-- **검증**: 실제 빌드된 `dist/GenomeWorkbench/GenomeWorkbench.exe`에 대해 `--version`, `--self-test`, `--smoke-test`를 모두 실행해 exit code 0과 파일 출력을 직접 확인함(세션 로그 참고). `--self-test`는 Qt platform plugin 로드까지 frozen exe 내부에서 성공적으로 통과했고, `--smoke-test`는 FASTA import → project 저장/재오픈 → feature 생성 → GenBank export → semantic reimport 검증까지 실제 packaged 산출물에서 전부 통과했다.
-- **재검토 결과 (실제 Windows 머신, 대화형 cmd.exe/PowerShell에서 재검증)**: 실제로 검증해보니 예상과 다른, 더 구체적인 실제 버그를 발견해 고쳤다. `cmd.exe /c "GenomeWorkbench.exe --version > out.txt"`로 파일 리다이렉션했을 때 exit code는 0인데 `out.txt`가 **빈 파일**이었다(반면 `%LOCALAPPDATA%/GenomeWorkbench/last_version_output.json` fallback에는 정상적으로 기록됨 — 즉 명령 자체는 성공했는데 표준출력만 사라짐). 원인: 기존 코드가 `AttachConsole(-1)` 성공 여부만 보고 무조건 `CONOUT$`(콘솔 화면 버퍼)에 다시 연결했는데, 호출자가 이미 표준출력을 파일/파이프로 리다이렉션한 경우에도 이 로직이 실행되어 실제 리다이렉션 대상이 아니라 보이지 않는 백그라운드 콘솔 화면으로 출력을 보내버렸다(Git Bash/mintty는 진짜 Win32 콘솔을 할당하지 않아 `AttachConsole`이 조용히 실패하므로 이 세션 내내 Bash로 실행할 때는 우연히 문제가 드러나지 않았다 — 실제 콘솔을 가진 cmd.exe/PowerShell에서만 재현됨). **수정**: `GetStdHandle`+`GetFileType`으로 STD_OUTPUT_HANDLE/STD_ERROR_HANDLE이 이미 파일(`FILE_TYPE_DISK`) 또는 파이프(`FILE_TYPE_PIPE`)로 연결되어 있는지 먼저 확인하고, 그렇다면 그 핸들로 `sys.stdout`/`sys.stderr`를 재구성한다(`msvcrt.open_osfhandle` + `os.fdopen`) — `AttachConsole`/`CONOUT$` 경로는 리다이렉션이 전혀 없을 때(실제 대화형 콘솔)만 탄다. 수정 후 실제 빌드된 exe로 `cmd.exe /c "... > out.txt"`(파일 리다이렉션)와 PowerShell `| Select-Object`(파이프)를 재검증해 둘 다 `out.txt`/파이프에 실제 텍스트가 정상적으로 잡힘을 확인했다. `--self-test`/`--smoke-test`도 회귀 없이 그대로 통과.
+- **문제**: `DNAvigator.exe`는 GUI 실행 시 콘솔 창이 뜨면 안 되므로(`console=False`) PyInstaller onedir로 빌드했다. `--self-test` 등 CLI 플래그 사용 시에는 부모 콘솔에 `AttachConsole`로 붙어 출력하도록 구현했는데, 실제 대화형 터미널(cmd.exe/PowerShell)에서는 동작이 기대되지만 이 개발 sandbox 자체가 진짜 Win32 콘솔을 제공하지 않아(git bash의 mintty, 자동화 도구의 pipe 리다이렉션) `AttachConsole`이 실패하고 표준출력이 소실되는 현상을 발견했다.
+- **판단**: 콘솔 유무에 의존하지 않는 검증 가능성을 확보하기 위해, `--version`/`--diagnostics`/`--self-test`/`--smoke-test`의 출력을 **항상** `%LOCALAPPDATA%/DNAvigator/last_*_output.json` 파일에도 기록한다(표준출력 시도는 best-effort로 유지). 이는 spec 13.4의 "진단 결과 내보내기" 요구와도 부합한다.
+- **검증**: 실제 빌드된 `dist/DNAvigator/DNAvigator.exe`에 대해 `--version`, `--self-test`, `--smoke-test`를 모두 실행해 exit code 0과 파일 출력을 직접 확인함(세션 로그 참고). `--self-test`는 Qt platform plugin 로드까지 frozen exe 내부에서 성공적으로 통과했고, `--smoke-test`는 FASTA import → project 저장/재오픈 → feature 생성 → GenBank export → semantic reimport 검증까지 실제 packaged 산출물에서 전부 통과했다.
+- **재검토 결과 (실제 Windows 머신, 대화형 cmd.exe/PowerShell에서 재검증)**: 실제로 검증해보니 예상과 다른, 더 구체적인 실제 버그를 발견해 고쳤다. `cmd.exe /c "DNAvigator.exe --version > out.txt"`로 파일 리다이렉션했을 때 exit code는 0인데 `out.txt`가 **빈 파일**이었다(반면 `%LOCALAPPDATA%/DNAvigator/last_version_output.json` fallback에는 정상적으로 기록됨 — 즉 명령 자체는 성공했는데 표준출력만 사라짐). 원인: 기존 코드가 `AttachConsole(-1)` 성공 여부만 보고 무조건 `CONOUT$`(콘솔 화면 버퍼)에 다시 연결했는데, 호출자가 이미 표준출력을 파일/파이프로 리다이렉션한 경우에도 이 로직이 실행되어 실제 리다이렉션 대상이 아니라 보이지 않는 백그라운드 콘솔 화면으로 출력을 보내버렸다(Git Bash/mintty는 진짜 Win32 콘솔을 할당하지 않아 `AttachConsole`이 조용히 실패하므로 이 세션 내내 Bash로 실행할 때는 우연히 문제가 드러나지 않았다 — 실제 콘솔을 가진 cmd.exe/PowerShell에서만 재현됨). **수정**: `GetStdHandle`+`GetFileType`으로 STD_OUTPUT_HANDLE/STD_ERROR_HANDLE이 이미 파일(`FILE_TYPE_DISK`) 또는 파이프(`FILE_TYPE_PIPE`)로 연결되어 있는지 먼저 확인하고, 그렇다면 그 핸들로 `sys.stdout`/`sys.stderr`를 재구성한다(`msvcrt.open_osfhandle` + `os.fdopen`) — `AttachConsole`/`CONOUT$` 경로는 리다이렉션이 전혀 없을 때(실제 대화형 콘솔)만 탄다. 수정 후 실제 빌드된 exe로 `cmd.exe /c "... > out.txt"`(파일 리다이렉션)와 PowerShell `| Select-Object`(파이프)를 재검증해 둘 다 `out.txt`/파이프에 실제 텍스트가 정상적으로 잡힘을 확인했다. `--self-test`/`--smoke-test`도 회귀 없이 그대로 통과.
 
 ## D-006: 중앙 화면을 text/table에서 실제 genome visualization으로 재설계
 
-- **배경**: 사용자가 Phase 1 결과물을 검토한 뒤, "초보자가 마우스만으로 genome을 탐색·annotation할 수 있는 Geneious 스타일 workbench"를 원했는데 실제로는 sequence 목록 조회기 수준이라고 지적함. "검토 후 진행하지 말고 작업의뢰서(GenomeWorkbench 원본 스펙)대로 끝까지 진행하라"는 명시적 지시를 받음.
+- **배경**: 사용자가 Phase 1 결과물을 검토한 뒤, "초보자가 마우스만으로 genome을 탐색·annotation할 수 있는 Geneious 스타일 workbench"를 원했는데 실제로는 sequence 목록 조회기 수준이라고 지적함. "검토 후 진행하지 말고 작업의뢰서(DNAvigator 원본 스펙)대로 끝까지 진행하라"는 명시적 지시를 받음.
 - **판단**: Phase 순서를 엄격히 지키는 대신, 사용자가 실제로 가치를 느끼는 부분(Phase 3 시각화, Phase 5/6 BLAST)을 Phase 2(GFF3)보다 먼저 구현했다. `ui/views/genome_canvas.py`(선형, LOD 4단계), `circular_genome_canvas.py`(원형), `minimap.py`, 편집 가능한 `InspectorDock`, 실제 BLAST 파이프라인을 새로 만들고 기존 `QPlainTextEdit` 기반 Sequence/Overview 탭은 완전히 폐기했다.
 - **근거**: PROGRESS.md "Phase 3 / BLAST 조기 구현" 절에 상세 체크리스트와 스크린샷 검증 결과를 남김.
 
 ## D-007: BLAST database 카탈로그는 project가 아닌 사용자 전역 범위
 
-- **판단**: `BlastService`는 등록된 BLAST database 목록을 project SQLite가 아니라 `%LOCALAPPDATA%/GenomeWorkbench/blast/catalog.json`에 저장한다. 여러 project가 동일한 reference database(예: 표준 AMR gene DB)를 재사용하는 것이 자연스러운 사용 패턴이라고 판단했기 때문이다.
+- **판단**: `BlastService`는 등록된 BLAST database 목록을 project SQLite가 아니라 `%LOCALAPPDATA%/DNAvigator/blast/catalog.json`에 저장한다. 여러 project가 동일한 reference database(예: 표준 AMR gene DB)를 재사용하는 것이 자연스러운 사용 패턴이라고 판단했기 때문이다.
 - **테스트 격리**: 이 전역 상태 때문에 자동화 테스트가 실제 사용자 프로필을 오염시키는 문제를 발견했다(동일 이름의 database가 테스트 실행마다 누적됨). `BlastService.__init__(work_dir=...)`와 `MainWindow.__init__(blast_work_dir=...)`에 주입 지점을 추가해 테스트는 `tmp_path`를 사용하고, 프로덕션 기본값은 기존과 동일한 전역 경로를 유지한다.
 - **evidence 보존과의 관계**: database가 나중에 삭제/카탈로그에서 제거되어도 이미 적용된 annotation의 근거(Provenance: database_id, checksum, subject_id, identity/evalue/bitscore, raw_result_ref)는 project SQLite에 별도로 영속화되어 있으므로 spec 11.10의 "database가 삭제되어도 evidence summary는 project 안에 남아야 한다" 요구사항은 충족된다.
 
@@ -60,3 +60,14 @@
 
 - 명세 5.2 표는 Feature.strand를 `+1, -1, 0/None` 단일 값으로 정의한다. Biopython의 `CompoundLocation`은 이론상 part마다 다른 strand를 가질 수 있으나(order operator 등 드문 경우), P0 범위에서는 지원하지 않는다.
 - **판단**: import 시 part별 strand가 서로 다르면 validation issue(warning)로 보고하고 feature 전체 strand는 다수/첫 part 기준으로 근사한다. 완전한 mixed-strand 지원은 P2 후보로 `KNOWN_LIMITATIONS.md`에 기록한다.
+
+## D-010: 제품명을 GenomeWorkbench에서 DNAvigator로 변경
+
+- **문제**: v0.1.1을 공개 배포한 뒤, 사용자가 다른 사람들에게 써보라고 안내하려다 "GenomeWorkbench"라는 이름이 너무 일반적인 서술형 단어(문자 그대로 "유전체 작업대")라 구글 검색으로 찾기가 사실상 불가능하다는 것을 발견했다.
+- **판단**: 검색 시 겹치는 기존 결과가 거의 없는 조어로 새 이름을 짓기로 하고, 사용자에게 유머러스한 말장난이 섞인 후보를 제시해 "DNAvigator"(DNA + Navigator)를 선택받았다.
+- **적용 범위**: 사용자에게 보이는 모든 곳(`version.py`의 `APP_NAME`, window title, 파일 다이얼로그 문구, `%LOCALAPPDATA%` 폴더 경로, installer의 `AppName`/`AppPublisher`/exe 이름/Start Menu 항목, PyInstaller 산출물 이름, README/문서 전체)을 바꿨다. Installer의 `AppId` GUID도 새로 발급했다(다른 제품 정체성이므로 "업그레이드"가 아니라 새 설치로 취급되는 것이 맞다고 판단).
+- **의도적으로 바꾸지 않은 것**:
+  - Python 패키지 자체의 import 경로(`genome_workbench`)는 그대로 둔다 — 사용자에게 전혀 보이지 않는 내부 구현 세부사항이고, 91개 파일의 import문을 건드리는 것은 이름 변경의 실익(검색 노출) 없이 위험만 키운다.
+  - project 파일 확장자(`.gwbproj`)도 그대로 둔다 — 확장자는 구글 검색 노출과 무관하고, 바꿔도 얻는 것이 없다.
+  - GitHub 저장소 URL slug(`github.com/dudrnjs8300/genome-workbench`)는 저장소 이름 변경에 필요한 GitHub 인증 권한이 이 세션에는 없어 그대로 두었다 — 필요하면 사용자가 직접 Settings에서 변경 가능하며, 링크는 GitHub가 자동으로 리다이렉트해준다.
+- **검증**: `dnavigator.spec`/`dnavigator.iss`로 실제 재빌드 → 로컬 설치/self-test/파일 연결/제거 전체 사이클 재검증 → v0.2.0으로 재태깅해 GitHub Release 재배포.

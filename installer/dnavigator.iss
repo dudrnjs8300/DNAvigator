@@ -1,31 +1,32 @@
-; Inno Setup script for GenomeWorkbench.
+; Inno Setup script for DNAvigator (formerly GenomeWorkbench -- renamed for
+; distinctiveness/searchability, see docs/DECISIONS.md).
 ; Builds a user-local installer (no admin rights required) from the
-; PyInstaller onedir output at dist\GenomeWorkbench.
+; PyInstaller onedir output at dist\DNAvigator.
 ;
-; Build with: iscc installer\genome_workbench.iss
+; Build with: iscc installer\dnavigator.iss
 ; (requires Inno Setup 6, https://jrsoftware.org/isinfo.php - not bundled
 ; with this repository; install it separately before running iscc.)
 ;
 ; Compiled and verified on the development machine: silent install
 ; (/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LANG=english) placed the app
-; under %LOCALAPPDATA%\Programs\GenomeWorkbench with no admin prompt
+; under %LOCALAPPDATA%\Programs\DNAvigator with no admin prompt
 ; (PrivilegesRequired=lowest working as intended), --self-test/--smoke-test
 ; passed from the installed location, the Start Menu shortcut was created,
-; and silent uninstall removed both cleanly. Not yet verified on a fully
-; separate clean Windows user account/VM — see docs/RELEASE_TEST_REPORT.md.
+; and silent uninstall removed both cleanly. Also verified on GitHub Actions'
+; clean windows-latest runner (windows-release.yml) — see docs/RELEASE_TEST_REPORT.md.
 ;
 ; Note: with two [Languages] entries registered, /VERYSILENT alone still
 ; shows the language-picker dialog and blocks; pass /LANG=english (or
 ; /LANG=korean) for unattended installs.
 
-#define MyAppName "GenomeWorkbench"
-#define MyAppVersion "0.1.1"
-#define MyAppPublisher "GenomeWorkbench Project"
-#define MyAppExeName "GenomeWorkbench.exe"
+#define MyAppName "DNAvigator"
+#define MyAppVersion "0.2.0"
+#define MyAppPublisher "DNAvigator Project"
+#define MyAppExeName "DNAvigator.exe"
 #define MyAppAssocExt ".gwbproj"
 
 [Setup]
-AppId={{B6C1B9C1-5B7E-4B7A-9B4E-1D6A9B7B5C11}
+AppId={{4B71C72A-8BC3-45F6-9FB8-ABE84745354F}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -33,7 +34,7 @@ AppPublisher={#MyAppPublisher}
 PrivilegesRequired=lowest
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
-OutputBaseFilename=GenomeWorkbench-{#MyAppVersion}-win-x64-setup
+OutputBaseFilename=DNAvigator-{#MyAppVersion}-win-x64-setup
 OutputDir=..\release
 Compression=lzma2
 SolidCompression=yes
@@ -52,8 +53,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "fileassoc"; Description: "Associate .gwbproj project files with {#MyAppName}"; GroupDescription: "File associations:"
 
 [Files]
-; Onedir PyInstaller output: everything under dist\GenomeWorkbench\*
-Source: "..\dist\GenomeWorkbench\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Onedir PyInstaller output: everything under dist\DNAvigator\*
+Source: "..\dist\DNAvigator\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -61,10 +62,13 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Registry]
 ; File association only created if the user opts in (Tasks: fileassoc).
-Root: HKCU; Subkey: "Software\Classes\{#MyAppAssocExt}"; ValueType: string; ValueName: ""; ValueData: "GenomeWorkbenchProject"; Tasks: fileassoc; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Classes\GenomeWorkbenchProject"; ValueType: string; ValueName: ""; ValueData: "GenomeWorkbench Project"; Tasks: fileassoc; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\GenomeWorkbenchProject\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: fileassoc
-Root: HKCU; Subkey: "Software\Classes\GenomeWorkbenchProject\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: fileassoc
+; Project file extension (.gwbproj) is unchanged from the GenomeWorkbench
+; name -- it's internal plumbing invisible to the rename's actual goal
+; (searchability of the app name), and changing it has no upside.
+Root: HKCU; Subkey: "Software\Classes\{#MyAppAssocExt}"; ValueType: string; ValueName: ""; ValueData: "DNAvigatorProject"; Tasks: fileassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\DNAvigatorProject"; ValueType: string; ValueName: ""; ValueData: "DNAvigator Project"; Tasks: fileassoc; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\DNAvigatorProject\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: fileassoc
+Root: HKCU; Subkey: "Software\Classes\DNAvigatorProject\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: fileassoc
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent

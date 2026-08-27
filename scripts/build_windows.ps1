@@ -14,10 +14,10 @@ try {
     }
 
     Write-Host "==> PyInstaller onedir build"
-    & $venvPython -m PyInstaller scripts\genome_workbench.spec --distpath dist --workpath build --noconfirm
+    & $venvPython -m PyInstaller scripts\dnavigator.spec --distpath dist --workpath build --noconfirm
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
 
-    $exePath = Join-Path $repoRoot "dist\GenomeWorkbench\GenomeWorkbench.exe"
+    $exePath = Join-Path $repoRoot "dist\DNAvigator\DNAvigator.exe"
 
     Write-Host "==> packaged --self-test"
     & $exePath --self-test

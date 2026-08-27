@@ -1,6 +1,6 @@
 # 개발자 가이드 (DEVELOPER.md)
 
-이 문서는 GenomeWorkbench 저장소를 직접 수정하거나 빌드하려는 개발자를 위한 것이다.
+이 문서는 DNAvigator 저장소를 직접 수정하거나 빌드하려는 개발자를 위한 것이다.
 그냥 프로그램을 설치해서 쓰기만 하려면 [`README.md`](../README.md)만 보면 된다.
 
 ## 개발 환경 빠른 시작
@@ -32,17 +32,17 @@ $env:QT_QPA_PLATFORM = "offscreen"; python -m pytest tests -q
 powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
 
-`dist/GenomeWorkbench/GenomeWorkbench.exe`가 생성되며, 스크립트가 자동으로 packaged
+`dist/DNAvigator/DNAvigator.exe`가 생성되며, 스크립트가 자동으로 packaged
 `--self-test`/`--smoke-test`까지 실행해 검증한다.
 
 인스톨러(.exe)까지 만들려면 [Inno Setup 6](https://jrsoftware.org/isinfo.php)를 설치한 뒤:
 
 ```powershell
-iscc installer\genome_workbench.iss
+iscc installer\dnavigator.iss
 ```
 
-`release/GenomeWorkbench-0.1.0-win-x64-setup.exe`가 생성된다. 자세한 내용은
-[`installer/genome_workbench.iss`](../installer/genome_workbench.iss)와
+`release/DNAvigator-0.2.0-win-x64-setup.exe`가 생성된다. 자세한 내용은
+[`installer/dnavigator.iss`](../installer/dnavigator.iss)와
 [`docs/RELEASE_TEST_REPORT.md`](RELEASE_TEST_REPORT.md) 참고.
 
 ## 진단 CLI
@@ -51,15 +51,15 @@ GUI 프로그램이지만 CI/장애 진단을 위해 command-line option을 제�
 service를 사용한다):
 
 ```
-GenomeWorkbench.exe --version
-GenomeWorkbench.exe --diagnostics
-GenomeWorkbench.exe --self-test
-GenomeWorkbench.exe --smoke-test <fixture-directory> <output-directory>
+DNAvigator.exe --version
+DNAvigator.exe --diagnostics
+DNAvigator.exe --self-test
+DNAvigator.exe --smoke-test <fixture-directory> <output-directory>
 ```
 
 ## 릴리스 절차
 
-`v*` 형식의 태그(예: `v0.1.0`)를 push하면 `.github/workflows/windows-release.yml`이 자동으로:
+`v*` 형식의 태그(예: `v0.2.0`)를 push하면 `.github/workflows/windows-release.yml`이 자동으로:
 
 1. 품질 게이트(ruff/mypy/pytest)를 통과시키고
 2. PyInstaller onedir 빌드 + packaged self-test/smoke-test를 clean `windows-latest` 러너에서 실행하고
@@ -68,8 +68,8 @@ GenomeWorkbench.exe --smoke-test <fixture-directory> <output-directory>
 4. GitHub Release를 만들어 두 산출물을 첨부한다.
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 `workflow_dispatch`로 태그 없이 수동 실행하면 1~3단계까지만 하고 Release는 만들지 않는다(빌드

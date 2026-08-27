@@ -1,3 +1,3 @@
-APP_NAME = "GenomeWorkbench"
-APP_VERSION = "0.1.1"
+APP_NAME = "DNAvigator"
+APP_VERSION = "0.2.0"
 SCHEMA_VERSION = 1

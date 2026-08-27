@@ -2,7 +2,7 @@
 preset a user can re-apply when creating new features, instead of retyping
 the same gene/product/transl_table combination every time.
 
-Stored at ``%LOCALAPPDATA%/GenomeWorkbench/annotation_templates.json``,
+Stored at ``%LOCALAPPDATA%/DNAvigator/annotation_templates.json``,
 scoped to the user rather than a single project -- the same rationale as the
 BLAST database catalog (D-007): a template like "bacterial CDS" is useful
 across every project, not just the one it was first saved in.

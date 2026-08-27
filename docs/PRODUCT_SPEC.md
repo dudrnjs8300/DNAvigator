@@ -1,11 +1,11 @@
-# GenomeWorkbench
+# DNAvigator
 
 ## Claude Code 자율 개발 지시서 및 상세 작업계획서
 
 - 문서 버전: 1.0
 - 작성 기준일: 2026-08-26
 - 작업명: Windows 기반 로컬 genome sequence visualization 및 annotation workbench 개발
-- 임시 제품명: **GenomeWorkbench**
+- 임시 제품명: **DNAvigator**
 - 최종 목표: FASTA/GenBank/GFF3 계열 파일을 열어 genome과 annotation을 시각화·편집하고, 선택 구간을 수동 또는 로컬 BLAST 근거로 annotation한 뒤 표준 파일로 내보낼 수 있는 독립 실행형 Windows 프로그램
 
 ---
@@ -258,10 +258,10 @@ P2 메뉴를 미리 만들어 비어 있게 두지 않는다. 확장 가능한 a
 
 GUI 프로그램이더라도 clean-machine CI와 장애 진단을 위해 다음 option을 제공한다. 일반 사용자는 command line을 몰라도 되며, 동일한 application service를 호출하므로 별도 구현으로 기능이 갈라지지 않게 한다.
 
-- `GenomeWorkbench.exe --version`
-- `GenomeWorkbench.exe --diagnostics`
-- `GenomeWorkbench.exe --self-test`
-- `GenomeWorkbench.exe --smoke-test <fixture-directory> <output-directory>`
+- `DNAvigator.exe --version`
+- `DNAvigator.exe --diagnostics`
+- `DNAvigator.exe --self-test`
+- `DNAvigator.exe --smoke-test <fixture-directory> <output-directory>`
 
 `--self-test`는 UI를 띄우지 않고 runtime resource, writable user directory, SQLite, format codecs, Qt plugin, 설정된 BLAST executable을 검사하여 exit code와 JSON/텍스트 결과를 반환한다. BLAST가 아직 설정되지 않은 상태는 core self-test 실패가 아니라 `optional_tool_unavailable`로 구분한다.
 
@@ -323,7 +323,7 @@ flowchart TD
 ## 4.2 권장 저장소 구조
 
 ```text
-GenomeWorkbench/
+DNAvigator/
   pyproject.toml
   uv.lock 또는 requirements.lock
   README.md
@@ -404,7 +404,7 @@ GenomeWorkbench/
     build_windows.ps1
     make_release.ps1
   installer/
-    genome_workbench.iss
+    dnavigator.iss
   docs/
     PRODUCT_SPEC.md
     ARCHITECTURE.md
@@ -1403,7 +1403,7 @@ stateDiagram-v2
 ## 13.4 logging
 
 - Python logging 기반 structured context
-- `%LOCALAPPDATA%/GenomeWorkbench/logs` 아래 rotating log
+- `%LOCALAPPDATA%/DNAvigator/logs` 아래 rotating log
 - project ID, job ID, record ID를 context로 포함
 - sequence 전체, patient identifier, credential을 log에 남기지 않는다.
 - command에는 executable과 parameter를 기록하되 secret이 생길 수 있는 값은 redact한다.
@@ -2086,7 +2086,7 @@ release마다 다음을 자동 또는 수동 측정하여 `docs/PERFORMANCE.md`�
 
 ## 22.3 Windows
 
-- `%LOCALAPPDATA%/GenomeWorkbench`: settings, logs, app-managed tools
+- `%LOCALAPPDATA%/DNAvigator`: settings, logs, app-managed tools
 - `%APPDATA%`와 project path 역할을 혼동하지 않는다.
 - path length와 Unicode를 다룬다.
 - file locking/antivirus delay를 고려한 retry를 제한적으로 적용한다.
@@ -2168,10 +2168,10 @@ release마다 다음을 자동 또는 수동 측정하여 `docs/PERFORMANCE.md`�
 
 ```text
 release/
-  GenomeWorkbench-1.0.0-win-x64-portable.zip
-  GenomeWorkbench-1.0.0-win-x64-setup.exe
-  GenomeWorkbench-1.0.0-win-x64-portable.zip.sha256
-  GenomeWorkbench-1.0.0-win-x64-setup.exe.sha256
+  DNAvigator-1.0.0-win-x64-portable.zip
+  DNAvigator-1.0.0-win-x64-setup.exe
+  DNAvigator-1.0.0-win-x64-portable.zip.sha256
+  DNAvigator-1.0.0-win-x64-setup.exe.sha256
   RELEASE_NOTES.md
   RELEASE_TEST_REPORT.md
   THIRD_PARTY_NOTICES.md

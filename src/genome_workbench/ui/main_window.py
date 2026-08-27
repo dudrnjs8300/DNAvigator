@@ -358,7 +358,7 @@ class MainWindow(QMainWindow):
 
     def _on_new_project(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, "New Project", "", "GenomeWorkbench Project (*.gwbproj)"
+            self, "New Project", "", "DNAvigator Project (*.gwbproj)"
         )
         if not path:
             return
@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
 
     def _on_open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open Project", "", "GenomeWorkbench Project (*.gwbproj)"
+            self, "Open Project", "", "DNAvigator Project (*.gwbproj)"
         )
         if not path:
             return

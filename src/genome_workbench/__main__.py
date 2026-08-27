@@ -1,6 +1,6 @@
 """CLI entry point.
 
-``GenomeWorkbench.exe`` is a GUI application, but it exposes diagnostic and
+``DNAvigator.exe`` is a GUI application, but it exposes diagnostic and
 self-test flags for clean-machine CI and support triage. These call the same
 application services the GUI uses — there is no separate "test" code path.
 """
@@ -150,7 +150,7 @@ def _cmd_smoke_test(fixture_dir: str, output_dir: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="GenomeWorkbench")
+    parser = argparse.ArgumentParser(prog="DNAvigator")
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--diagnostics", action="store_true")
     parser.add_argument("--self-test", action="store_true")

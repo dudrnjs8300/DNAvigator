@@ -1,8 +1,8 @@
 # BLAST+ 설치 및 설정 (BLAST_SETUP.md)
 
-GenomeWorkbench는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 조건 미검토, `docs/LICENSING.md` 참고). 사용자가 직접 설치하거나 이미 설치된 것을 등록해야 한다.
+DNAvigator는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 조건 미검토, `docs/LICENSING.md` 참고). 사용자가 직접 설치하거나 이미 설치된 것을 등록해야 한다.
 
-> **이 문서의 검증 상태**: 1절의 절차(공식 NCBI FTP에서 `ncbi-blast-2.17.0+-win64.exe` 다운로드 → MD5 확인 → silent 설치 `/S`)를 이 개발 머신에서 실제로 수행했고, GenomeWorkbench의 BLAST 파이프라인(설치 자동 탐지, 실제 `makeblastdb`로 nucleotide/protein database 생성, 실제 `blastn`/`blastp`/`blastx`/`tblastn` 실행, 결과 파싱, 좌표 매핑, annotation 적용)을 4개 프로그램 전부 실제 바이너리로 검증했다(`tests/integration/test_blast_real_installation.py`). 2절의 앱 내장 자동 다운로드 경로도 이제 구현되어 있다.
+> **이 문서의 검증 상태**: 1절의 절차(공식 NCBI FTP에서 `ncbi-blast-2.17.0+-win64.exe` 다운로드 → MD5 확인 → silent 설치 `/S`)를 이 개발 머신에서 실제로 수행했고, DNAvigator의 BLAST 파이프라인(설치 자동 탐지, 실제 `makeblastdb`로 nucleotide/protein database 생성, 실제 `blastn`/`blastp`/`blastx`/`tblastn` 실행, 결과 파싱, 좌표 매핑, annotation 적용)을 4개 프로그램 전부 실제 바이너리로 검증했다(`tests/integration/test_blast_real_installation.py`). 2절의 앱 내장 자동 다운로드 경로도 이제 구현되어 있다.
 
 ## 1. 공식 BLAST+ 설치
 
@@ -14,7 +14,7 @@ GenomeWorkbench는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 
    - `blastp.exe`
    - `blastx.exe`
    - `tblastn.exe`
-3. GenomeWorkbench에서 **BLAST > BLAST Setup...** 을 연다.
+3. DNAvigator에서 **BLAST > BLAST Setup...** 을 연다.
 4. 설치 경로(`bin` 폴더)를 "BLAST+ bin directory"에 입력하거나 **Browse...** 로 선택한 뒤 **Detect**를 누른다.
 5. 6개 실행파일이 모두 "[OK]"로 표시되고 각 버전 정보가 보이면 설정이 끝난 것이다.
 
@@ -27,7 +27,7 @@ GenomeWorkbench는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 
 1. NCBI의 release index 페이지(`ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/`)에서 최신 Windows 이식용 배포판(`ncbi-blast-X.Y.Z+-x64-win64.tar.gz`) 파일명을 동적으로 찾는다 — 특정 버전을 하드코딩하지 않으므로 NCBI가 새 버전을 내면 자동으로 그것을 받는다.
 2. 다운로드 전 대상 크기(~140MB)와 설치 경로를 안내하는 확인 대화상자를 띄운다.
 3. 다운로드하면서 NCBI가 함께 게시하는 MD5 체크섬 파일(`.tar.gz.md5`)과 비교해 무결성을 검증한다 — 일치하지 않으면 설치를 중단하고 부분 다운로드 파일을 지운다.
-4. `%LOCALAPPDATA%\GenomeWorkbench\tools\blast+\<버전>\`에 압축을 푼다(설치 프로그램이 아니라 단순 압축 해제이므로 관리자 권한이 필요 없다).
+4. `%LOCALAPPDATA%\DNAvigator\tools\blast+\<버전>\`에 압축을 푼다(설치 프로그램이 아니라 단순 압축 해제이므로 관리자 권한이 필요 없다).
 5. 압축이 풀린 `bin` 폴더로 자동 재탐지한다.
 
 다운로드는 UI를 막지 않도록 별도 스레드에서 진행되며, 진행률 표시줄과 **Cancel** 버튼으로 중단할 수 있다.
@@ -47,7 +47,7 @@ GenomeWorkbench는 NCBI BLAST+ 실행파일을 포함하지 않는다(재배포 
 
 ## 4. Database 목록/위치
 
-Database는 project가 아니라 사용자 전역 폴더에 저장된다: `%LOCALAPPDATA%\GenomeWorkbench\blast\databases\<이름>\`. 여러 project에서 동일한 reference database를 재사용할 수 있다는 뜻이다. Database 목록 자체는 `%LOCALAPPDATA%\GenomeWorkbench\blast\catalog.json`에 기록된다.
+Database는 project가 아니라 사용자 전역 폴더에 저장된다: `%LOCALAPPDATA%\DNAvigator\blast\databases\<이름>\`. 여러 project에서 동일한 reference database를 재사용할 수 있다는 뜻이다. Database 목록 자체는 `%LOCALAPPDATA%\DNAvigator\blast\catalog.json`에 기록된다.
 
 이미 적용된 annotation의 BLAST 근거(database 이름, checksum, subject ID, identity, e-value 등)는 project 파일(`.gwbproj`) 안에 별도로 저장되므로, database를 나중에 지우거나 catalog에서 제거해도 과거 annotation의 근거 정보 자체는 project 안에 그대로 남는다.
 

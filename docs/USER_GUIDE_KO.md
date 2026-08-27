@@ -1,18 +1,20 @@
-# GenomeWorkbench 사용자 매뉴얼 (한국어)
+# DNAvigator 사용자 매뉴얼 (한국어)
 
-버전: 0.1.0 (2026-08-26 기준). 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
+버전: 0.2.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
 
 ## 1. 설치
 
-### Portable (권장, 검증됨)
+### Installer (권장)
 
-1. `GenomeWorkbench-0.1.0-win-x64-portable.zip`을 원하는 위치에 압축 해제한다. 한글이나 공백이 포함된 경로도 문제없다.
-2. 압축 해제된 폴더 안의 `GenomeWorkbench.exe`를 실행한다.
-3. 관리자 권한이 필요 없다. 별도의 Python 설치도 필요 없다.
+GitHub Releases(`https://github.com/dudrnjs8300/genome-workbench/releases/latest`)에서
+`DNAvigator-X.Y.Z-win-x64-setup.exe`를 내려받아 실행한다. 관리자 권한이 필요 없다.
+자세한 단계는 저장소 루트의 `README.md` 참고.
 
-### Installer
+### Portable
 
-이 버전에는 컴파일된 installer(.exe)가 포함되지 않는다(빌드 환경에 Inno Setup이 없었음). `release/RELEASE_NOTES.md` 참고. Installer가 필요하면 `installer/genome_workbench.iss`를 Inno Setup 6으로 직접 빌드한다.
+압축 해제만 해서 쓰고 싶다면 같은 Release 페이지의 `DNAvigator-portable-win-x64.zip`을 원하는
+위치에 압축 해제한다(한글이나 공백이 포함된 경로도 문제없다). 압축 해제된 폴더 안의
+`DNAvigator.exe`를 실행하면 된다. 별도의 Python 설치도 필요 없다.
 
 ### 첫 실행 시 확인 사항
 
@@ -123,7 +125,7 @@ Feature Table 탭에서 여러 행을 **Ctrl/Shift-클릭**으로 다중 선택�
 
 **BLAST > BLAST Setup...** 을 클릭한다. 자동으로 PATH와 일반적인 설치 위치에서 `makeblastdb`, `blastdbcmd`, `blastn`, `blastp`, `blastx`, `tblastn`을 찾는다. 없으면 "BLAST+ bin directory"에 직접 경로를 입력하고 **Detect**를 누른다.
 
-이 프로그램은 BLAST+ 실행파일을 포함하지 않는다. 대화상자의 **Download & Install BLAST+ (official NCBI build)** 버튼을 누르면 NCBI 공식 배포처에서 최신 Windows용 배포판(~140MB)을 내려받아 체크섬을 검증하고 `%LOCALAPPDATA%/GenomeWorkbench/tools`에 설치한 뒤 자동으로 재탐지한다(관리자 권한 불필요, 다운로드 중 진행률 표시 및 취소 가능). 수동으로 설치하고 싶다면 공식 배포처(https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)에서 내려받아 경로를 등록해도 된다. 자세한 내용은 `docs/BLAST_SETUP.md` 참고.
+이 프로그램은 BLAST+ 실행파일을 포함하지 않는다. 대화상자의 **Download & Install BLAST+ (official NCBI build)** 버튼을 누르면 NCBI 공식 배포처에서 최신 Windows용 배포판(~140MB)을 내려받아 체크섬을 검증하고 `%LOCALAPPDATA%/DNAvigator/tools`에 설치한 뒤 자동으로 재탐지한다(관리자 권한 불필요, 다운로드 중 진행률 표시 및 취소 가능). 수동으로 설치하고 싶다면 공식 배포처(https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)에서 내려받아 경로를 등록해도 된다. 자세한 내용은 `docs/BLAST_SETUP.md` 참고.
 
 ### 9.2 Custom database 만들기
 
@@ -153,11 +155,11 @@ hit을 선택한 뒤 **Apply as Annotation...** 을 클릭한다. 대화상자�
 
 ## 13. Project 동시 열기 / 비정상 종료
 
-같은 project 파일을 다른 GenomeWorkbench 창(또는 이전에 비정상 종료된 세션)이 이미 열고 있으면, **Open Project**시 알림이 뜨고 **읽기 전용으로 열기** 또는 **강제로 편집 모드로 열기**(다른 인스턴스가 실제로 열려있지 않다고 확신할 때만) 중 선택할 수 있다.
+같은 project 파일을 다른 DNAvigator 창(또는 이전에 비정상 종료된 세션)이 이미 열고 있으면, **Open Project**시 알림이 뜨고 **읽기 전용으로 열기** 또는 **강제로 편집 모드로 열기**(다른 인스턴스가 실제로 열려있지 않다고 확신할 때만) 중 선택할 수 있다.
 
 ## 14. 문제 해결
 
-- **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\GenomeWorkbench\logs`의 로그 파일을 확인한다.
-- **`GenomeWorkbench.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\GenomeWorkbench\last_self_test_output.json`에 모두 기록된다.
-- **`GenomeWorkbench.exe --diagnostics`**: 버전, OS, Python/Qt/Biopython 버전 등을 JSON으로 출력한다.
+- **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\DNAvigator\logs`의 로그 파일을 확인한다.
+- **`DNAvigator.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\DNAvigator\last_self_test_output.json`에 모두 기록된다.
+- **`DNAvigator.exe --diagnostics`**: 버전, OS, Python/Qt/Biopython 버전 등을 JSON으로 출력한다.
 - BLAST 관련 오류는 `docs/BLAST_SETUP.md`의 "일반 오류와 해결" 참고.
