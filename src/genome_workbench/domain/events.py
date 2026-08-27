@@ -22,6 +22,8 @@ class EventType:
     FOLDER_CREATE = "folder_create"
     FOLDER_UPDATE = "folder_update"
     FOLDER_DELETE = "folder_delete"
+    ALIGNMENT_UPDATE = "alignment_update"
+    ALIGNMENT_DELETE = "alignment_delete"
 
 
 @dataclass(slots=True)

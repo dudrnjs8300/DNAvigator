@@ -7,7 +7,8 @@ from pathlib import Path
 
 from genome_workbench.application.project_service import ProjectService
 from genome_workbench.domain.events import EventType
-from genome_workbench.domain.models import Feature, MoleculeType, SequenceRecord
+from genome_workbench.domain.models import Alignment, Feature, MoleculeType, SequenceRecord
+from genome_workbench.infrastructure.formats.alignment_adapter import read_alignment
 from genome_workbench.infrastructure.formats.fasta_adapter import read_fasta
 from genome_workbench.infrastructure.formats.genbank_adapter import read_genbank
 from genome_workbench.infrastructure.formats.gff3_adapter import read_gff3
@@ -18,6 +19,12 @@ from genome_workbench.infrastructure.formats.issues import ImportIssue, ImportSe
 class ImportResult:
     records: list[SequenceRecord] = field(default_factory=list)
     features_by_record_id: dict[str, list[Feature]] = field(default_factory=dict)
+    issues: list[ImportIssue] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class AlignmentImportOutcome:
+    alignments: list[Alignment] = field(default_factory=list)
     issues: list[ImportIssue] = field(default_factory=list)
 
 
@@ -107,3 +114,17 @@ class ImportService:
             features_by_record_id=parsed.features_by_record_id,
             issues=issues,
         )
+
+    def import_alignment(self, path: Path) -> AlignmentImportOutcome:
+        repo = self._project_service.require_writable()
+        parsed = read_alignment(Path(path))
+        for alignment in parsed.alignments:
+            repo.save_alignment(alignment, parsed.sequences_by_alignment_id[alignment.id])
+        if parsed.alignments:
+            self._project_service.log_audit(
+                EventType.IMPORT,
+                parsed.alignments[0].id,
+                f"Imported {len(parsed.alignments)} alignment(s) from {Path(path).name}",
+            )
+        self._project_service.touch()
+        return AlignmentImportOutcome(alignments=parsed.alignments, issues=list(parsed.issues))

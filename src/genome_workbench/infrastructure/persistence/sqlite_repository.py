@@ -11,6 +11,8 @@ from pathlib import Path
 from genome_workbench.domain.events import AuditEvent
 from genome_workbench.domain.locations import LocationOperator, LocationPart
 from genome_workbench.domain.models import (
+    Alignment,
+    AlignmentSequence,
     Feature,
     Folder,
     MoleculeType,
@@ -217,6 +219,80 @@ class ProjectRepository:
             name=row["name"],
             parent_folder_id=row["parent_folder_id"],
             sort_order=row["sort_order"],
+            created_at=row["created_at"],
+        )
+
+    # -- Alignment ---------------------------------------------------------------
+
+    def save_alignment(self, alignment: Alignment, sequences: list[AlignmentSequence]) -> None:
+        """Saves the alignment row and replaces its full set of rows in one
+        transaction -- alignments are always written whole (there is no
+        per-row incremental edit UI), so there is no partial-update case to
+        preserve, unlike save_feature's part/qualifier upsert."""
+        self._conn.execute(
+            """INSERT INTO alignment (id, name, molecule_type, length, source_format,
+                folder_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 name=excluded.name, molecule_type=excluded.molecule_type,
+                 length=excluded.length, source_format=excluded.source_format,
+                 folder_id=excluded.folder_id""",
+            (
+                alignment.id,
+                alignment.name,
+                alignment.molecule_type.value,
+                alignment.length,
+                alignment.source_format,
+                alignment.folder_id,
+                alignment.created_at,
+            ),
+        )
+        self._conn.execute("DELETE FROM alignment_sequence WHERE alignment_id = ?", (alignment.id,))
+        for seq in sequences:
+            self._conn.execute(
+                """INSERT INTO alignment_sequence (id, alignment_id, label, sequence, order_index)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (seq.id, alignment.id, seq.label, seq.sequence, seq.order_index),
+            )
+        self._conn.commit()
+
+    def get_alignment(self, alignment_id: str) -> Alignment | None:
+        row = self._conn.execute("SELECT * FROM alignment WHERE id = ?", (alignment_id,)).fetchone()
+        return self._row_to_alignment(row) if row else None
+
+    def list_alignments(self) -> list[Alignment]:
+        rows = self._conn.execute("SELECT * FROM alignment ORDER BY created_at, id").fetchall()
+        return [self._row_to_alignment(row) for row in rows]
+
+    def list_alignment_sequences(self, alignment_id: str) -> list[AlignmentSequence]:
+        rows = self._conn.execute(
+            "SELECT * FROM alignment_sequence WHERE alignment_id = ? ORDER BY order_index",
+            (alignment_id,),
+        ).fetchall()
+        return [
+            AlignmentSequence(
+                id=row["id"],
+                alignment_id=row["alignment_id"],
+                label=row["label"],
+                sequence=row["sequence"],
+                order_index=row["order_index"],
+            )
+            for row in rows
+        ]
+
+    def delete_alignment(self, alignment_id: str) -> None:
+        self._conn.execute("DELETE FROM alignment WHERE id = ?", (alignment_id,))
+        self._conn.commit()
+
+    @staticmethod
+    def _row_to_alignment(row: sqlite3.Row) -> Alignment:
+        return Alignment(
+            id=row["id"],
+            name=row["name"],
+            molecule_type=MoleculeType(row["molecule_type"]),
+            length=row["length"],
+            source_format=row["source_format"],
+            folder_id=row["folder_id"],
             created_at=row["created_at"],
         )
 

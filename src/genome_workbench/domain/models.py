@@ -142,6 +142,33 @@ class Feature:
 
 
 @dataclass(slots=True)
+class Alignment:
+    """A multiple sequence alignment imported as a unit (e.g. from a Clustal
+    or aligned-FASTA file). Lives alongside SequenceRecord in the same
+    project/folder tree -- it is its own kind of Project Explorer item, not
+    a bag of loose records, because the whole point is comparing the rows
+    together.
+    """
+
+    id: str = field(default_factory=new_id)
+    name: str = ""
+    molecule_type: MoleculeType = MoleculeType.UNKNOWN
+    length: int = 0  # alignment columns, including gaps -- same for every row
+    source_format: str = ""
+    folder_id: str | None = None
+    created_at: str = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class AlignmentSequence:
+    id: str = field(default_factory=new_id)
+    alignment_id: str = ""
+    label: str = ""
+    sequence: str = ""  # aligned, gap characters ('-') included, length == Alignment.length
+    order_index: int = 0
+
+
+@dataclass(slots=True)
 class Project:
     id: str = field(default_factory=new_id)
     name: str = "Untitled Project"

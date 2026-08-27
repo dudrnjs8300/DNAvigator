@@ -39,11 +39,12 @@ from genome_workbench.domain.blast_models import (
 )
 from genome_workbench.domain.events import EventType
 from genome_workbench.domain.locations import LocationPart, extract_sequence
-from genome_workbench.domain.models import Feature, SequenceRecord, Topology
+from genome_workbench.domain.models import Alignment, Feature, SequenceRecord, Topology
 from genome_workbench.infrastructure.filesystem.annotation_templates import load_templates
 from genome_workbench.infrastructure.filesystem.project_lock import ProjectLockedError
 from genome_workbench.ui.actions import make_action
 from genome_workbench.ui.dialogs.add_feature_dialog import AddFeatureDialog
+from genome_workbench.ui.dialogs.alignment_colors_dialog import AlignmentColorsDialog
 from genome_workbench.ui.dialogs.apply_blast_hit_dialog import ApplyBlastHitDialog
 from genome_workbench.ui.dialogs.batch_blast_results_dialog import BatchBlastResultsDialog
 from genome_workbench.ui.dialogs.batch_qualifier_dialog import BatchQualifierDialog
@@ -54,8 +55,10 @@ from genome_workbench.ui.dialogs.find_feature_dialog import FindFeatureDialog
 from genome_workbench.ui.docks.blast_panel import BlastPanel
 from genome_workbench.ui.docks.inspector_dock import InspectorDock
 from genome_workbench.ui.docks.project_explorer_dock import ProjectExplorerDock
+from genome_workbench.ui.rendering import nucleotide_colors
 from genome_workbench.ui.rendering.feature_colors import load_color_overrides, save_color_overrides
 from genome_workbench.ui.rendering.image_export import ImageExportError, export_widget_as_image
+from genome_workbench.ui.views.alignment_view_page import AlignmentViewPage
 from genome_workbench.ui.views.circular_genome_canvas import CircularGenomeCanvas
 from genome_workbench.ui.views.feature_table_view import FeatureTableView
 from genome_workbench.ui.views.genome_map_page import GenomeMapPage
@@ -71,6 +74,7 @@ class MainWindow(QMainWindow):
         blast_work_dir: Path | None = None,
         templates_dir: Path | None = None,
         color_overrides_dir: Path | None = None,
+        alignment_color_overrides_dir: Path | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
@@ -85,9 +89,14 @@ class MainWindow(QMainWindow):
         self._templates_dir = templates_dir
         self._color_overrides_dir = color_overrides_dir
         self._color_overrides = load_color_overrides(color_overrides_dir)
+        self._alignment_color_overrides_dir = alignment_color_overrides_dir
+        self._alignment_color_overrides = nucleotide_colors.load_color_overrides(
+            alignment_color_overrides_dir
+        )
 
         self._current_record: SequenceRecord | None = None
         self._current_feature: Feature | None = None
+        self._current_alignment: Alignment | None = None
         self._blast_installation = BlastInstallation(directory=None)
         self._active_worker: CallableWorker | None = None
         self._pending_query_record: SequenceRecord | None = None
@@ -126,6 +135,12 @@ class MainWindow(QMainWindow):
         self.explorer_dock.deleteFolderRequested.connect(self._on_delete_folder_requested)
         self.explorer_dock.moveFolderRequested.connect(self._on_move_folder_requested)
         self.explorer_dock.pasteRegionRequested.connect(self._on_paste_region_requested)
+        self.explorer_dock.alignmentSelected.connect(self._on_alignment_selected)
+        self.explorer_dock.renameAlignmentRequested.connect(self._on_rename_alignment_requested)
+        self.explorer_dock.deleteAlignmentRequested.connect(self._on_delete_alignment_requested)
+        self.explorer_dock.moveAlignmentToFolderRequested.connect(
+            self._on_move_alignment_to_folder_requested
+        )
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.explorer_dock)
 
         self.inspector_dock = InspectorDock(self)
@@ -181,6 +196,9 @@ class MainWindow(QMainWindow):
         self.feature_table.batchBlastRequested.connect(self._on_batch_blast_requested)
         self._tabs.addTab(self.feature_table, "Feature Table")
 
+        self.alignment_view_page = AlignmentViewPage(self)
+        self._tabs.addTab(self.alignment_view_page, "Alignment View")
+
         self.setCentralWidget(self._tabs)
 
     def _build_menus(self) -> None:
@@ -192,6 +210,9 @@ class MainWindow(QMainWindow):
             self, "Import &GenBank...", self._on_import_genbank
         )
         self.action_import_gff3 = make_action(self, "Import GFF&3...", self._on_import_gff3)
+        self.action_import_alignment = make_action(
+            self, "Import &Alignment...", self._on_import_alignment
+        )
         self.action_save_project = make_action(
             self, "&Save Project", self._on_save_project, shortcut="Ctrl+S"
         )
@@ -226,6 +247,7 @@ class MainWindow(QMainWindow):
             self.action_import_fasta,
             self.action_import_genbank,
             self.action_import_gff3,
+            self.action_import_alignment,
             None,
             self.action_save_project,
             self.action_export_genbank,
@@ -277,6 +299,10 @@ class MainWindow(QMainWindow):
             self, "&Export View as Image...", self._on_export_image_requested
         )
         view_menu.addAction(self.action_export_image)
+        self.action_alignment_colors = make_action(
+            self, "Alignment &Colors...", self._on_alignment_colors_requested
+        )
+        view_menu.addAction(self.action_alignment_colors)
 
         blast_menu = self.menuBar().addMenu("&BLAST")
         self.action_blast_setup = make_action(
@@ -314,12 +340,14 @@ class MainWindow(QMainWindow):
         self.action_import_fasta.setEnabled(writable)
         self.action_import_genbank.setEnabled(writable)
         self.action_import_gff3.setEnabled(writable)
+        self.action_import_alignment.setEnabled(writable)
+        self.action_alignment_colors.setEnabled(self._current_alignment is not None)
         self.action_undo.setEnabled(writable and self.project_service.undo_stack.can_undo)
         self.action_redo.setEnabled(writable and self.project_service.undo_stack.can_redo)
         self.action_find_feature.setEnabled(has_records)
         self.action_zoom_whole_genome.setEnabled(has_record)
         self.action_zoom_selection.setEnabled(has_record)
-        self.action_export_image.setEnabled(has_record)
+        self.action_export_image.setEnabled(has_record or self._current_alignment is not None)
         if is_open and self.project_service.is_read_only:
             self.statusBar().showMessage("Project open read-only", 5000)
 
@@ -330,7 +358,11 @@ class MainWindow(QMainWindow):
         records = self.project_service.list_records()
         folders = self.project_service.list_folders()
         counts = {r.id: len(self.project_service.list_features(r.id)) for r in records}
-        self.explorer_dock.set_data(records, folders, counts)
+        alignments = self.project_service.list_alignments()
+        alignment_counts = {
+            a.id: len(self.project_service.list_alignment_sequences(a.id)) for a in alignments
+        }
+        self.explorer_dock.set_data(records, folders, counts, alignments, alignment_counts)
 
     def _refresh_current_record_views(self) -> None:
         features = (
@@ -398,6 +430,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "New Project Failed", str(exc))
             return
         self._current_record = None
+        self._current_alignment = None
+        self.alignment_view_page.set_alignment(None, [])
         self._refresh_project_explorer()
         self._refresh_current_record_views()
         self._update_action_states()
@@ -423,6 +457,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Open Project Failed", str(exc))
             return
         self._current_record = None
+        self._current_alignment = None
+        self.alignment_view_page.set_alignment(None, [])
         self._refresh_project_explorer()
         self._refresh_current_record_views()
         self._update_action_states()
@@ -455,6 +491,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Open Project Failed", str(exc2))
             return
         self._current_record = None
+        self._current_alignment = None
+        self.alignment_view_page.set_alignment(None, [])
         self._refresh_project_explorer()
         self._refresh_current_record_views()
         self._update_action_states()
@@ -528,6 +566,27 @@ class MainWindow(QMainWindow):
             self._log(f"  [{issue.severity}] {issue.message}")
         if result.records:
             self._on_record_selected(result.records[0].id)
+
+    def _on_import_alignment(self) -> None:
+        if not self._guard_project_open():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Alignment",
+            "",
+            "Alignment files (*.fasta *.fa *.aln *.clustal *.sto *.stockholm "
+            "*.phy *.phylip *.nex *.nexus *.msf *.gz);;All files (*)",
+        )
+        if not path:
+            return
+        outcome = self.import_service.import_alignment(Path(path))
+        self._refresh_project_explorer()
+        self._update_action_states()
+        self._log(f"Imported {len(outcome.alignments)} alignment(s) from {path}")
+        for issue in outcome.issues:
+            self._log(f"  [{issue.severity}] {issue.message}")
+        if outcome.alignments:
+            self._on_alignment_selected(outcome.alignments[0].id)
 
     def _on_save_project(self) -> None:
         if not self._guard_project_open():
@@ -717,11 +776,13 @@ class MainWindow(QMainWindow):
             target_widget = self.genome_map_page.canvas
         elif current_tab is self.circular_canvas:
             target_widget = self.circular_canvas
+        elif current_tab is self.alignment_view_page:
+            target_widget = self.alignment_view_page.canvas
         else:
             QMessageBox.information(
                 self,
                 "Export View as Image",
-                "Switch to the Genome Map or Circular Map tab first.",
+                "Switch to the Genome Map, Circular Map, or Alignment View tab first.",
             )
             return
 
@@ -828,6 +889,72 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Move to Folder", str(exc))
             return
         self._refresh_project_explorer()
+
+    # -- Alignments -----------------------------------------------------------
+
+    def _on_rename_alignment_requested(self, alignment_id: str, new_name: str) -> None:
+        if not self._guard_project_open():
+            return
+        self.project_service.rename_alignment(alignment_id, new_name)
+        self._refresh_project_explorer()
+        if self._current_alignment is not None and self._current_alignment.id == alignment_id:
+            self._on_alignment_selected(alignment_id)
+
+    def _on_delete_alignment_requested(self, alignment_id: str) -> None:
+        if not self._guard_project_open():
+            return
+        alignment = self.project_service.get_alignment(alignment_id)
+        name = alignment.name if alignment is not None else alignment_id
+        self.project_service.delete_alignment(alignment_id)
+        if self._current_alignment is not None and self._current_alignment.id == alignment_id:
+            self._current_alignment = None
+            self.alignment_view_page.set_alignment(None, [])
+        self._refresh_project_explorer()
+        self._update_action_states()
+        self._log(f"Deleted alignment: {name}")
+
+    def _on_move_alignment_to_folder_requested(self, alignment_id: str, folder_id: str) -> None:
+        if not self._guard_project_open():
+            return
+        self.project_service.move_alignment_to_folder(alignment_id, folder_id or None)
+        self._refresh_project_explorer()
+
+    def _on_alignment_selected(self, alignment_id: str) -> None:
+        alignment = self.project_service.get_alignment(alignment_id)
+        self._current_alignment = alignment
+        if alignment is not None:
+            sequences = self.project_service.list_alignment_sequences(alignment_id)
+            self.alignment_view_page.set_alignment(alignment, sequences)
+            self.alignment_view_page.canvas.set_color_overrides(
+                nucleotide_colors.overrides_for(
+                    self._alignment_color_overrides, alignment.molecule_type
+                )
+            )
+            self._tabs.setCurrentWidget(self.alignment_view_page)
+        self._update_action_states()
+
+    def _on_alignment_colors_requested(self) -> None:
+        if self._current_alignment is None:
+            return
+        molecule_type = self._current_alignment.molecule_type
+        current = nucleotide_colors.overrides_for(self._alignment_color_overrides, molecule_type)
+        extra_residues = sorted(
+            {
+                c
+                for seq in self.project_service.list_alignment_sequences(self._current_alignment.id)
+                for c in seq.sequence.upper()
+                if c not in ("-", ".")
+            }
+        )
+        dialog = AlignmentColorsDialog(current, molecule_type, extra_residues, self)
+        if dialog.exec():
+            namespace = "amino_acid" if molecule_type.value == "protein" else "nucleotide"
+            self._alignment_color_overrides[namespace] = dialog.overrides
+            nucleotide_colors.save_color_overrides(
+                self._alignment_color_overrides, self._alignment_color_overrides_dir
+            )
+            self.alignment_view_page.canvas.set_color_overrides(dialog.overrides)
+            self._log("Alignment colors updated.")
 
     # -- Record / feature selection sync --------------------------------------
 

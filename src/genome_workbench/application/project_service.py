@@ -7,6 +7,8 @@ from pathlib import Path
 from genome_workbench.application.commands import RecordTopologyChangeCommand, UndoStack
 from genome_workbench.domain.events import AuditEvent, EventType
 from genome_workbench.domain.models import (
+    Alignment,
+    AlignmentSequence,
     Feature,
     Folder,
     Project,
@@ -177,6 +179,10 @@ class ProjectService:
             if record.folder_id == folder_id:
                 record.folder_id = new_parent
                 repo.save_record(record)
+        for alignment in repo.list_alignments():
+            if alignment.folder_id == folder_id:
+                alignment.folder_id = new_parent
+                repo.save_alignment(alignment, repo.list_alignment_sequences(alignment.id))
         repo.delete_folder(folder_id)
         self.log_audit(EventType.FOLDER_DELETE, folder_id, f"Deleted folder '{folder.name}'")
         self.touch()
@@ -215,6 +221,61 @@ class ProjectService:
         self.log_audit(EventType.FOLDER_UPDATE, folder_id, f"Moved folder '{folder.name}'")
         self.touch()
         return folder
+
+    # -- Alignments --------------------------------------------------------------
+
+    def list_alignments(self) -> list[Alignment]:
+        return self._require_repo().list_alignments()
+
+    def get_alignment(self, alignment_id: str) -> Alignment | None:
+        return self._require_repo().get_alignment(alignment_id)
+
+    def list_alignment_sequences(self, alignment_id: str) -> list[AlignmentSequence]:
+        return self._require_repo().list_alignment_sequences(alignment_id)
+
+    def save_alignment(self, alignment: Alignment, sequences: list[AlignmentSequence]) -> None:
+        self.require_writable().save_alignment(alignment, sequences)
+        self.touch()
+
+    def rename_alignment(self, alignment_id: str, new_name: str) -> Alignment:
+        repo = self.require_writable()
+        alignment = repo.get_alignment(alignment_id)
+        if alignment is None:
+            raise NoOpenProjectError(f"alignment {alignment_id} not found")
+        old_name = alignment.name
+        alignment.name = new_name
+        repo.save_alignment(alignment, repo.list_alignment_sequences(alignment_id))
+        self.log_audit(
+            EventType.ALIGNMENT_UPDATE,
+            alignment_id,
+            f"Renamed alignment '{old_name}' to '{new_name}'",
+        )
+        self.touch()
+        return alignment
+
+    def move_alignment_to_folder(self, alignment_id: str, folder_id: str | None) -> Alignment:
+        repo = self.require_writable()
+        alignment = repo.get_alignment(alignment_id)
+        if alignment is None:
+            raise NoOpenProjectError(f"alignment {alignment_id} not found")
+        alignment.folder_id = folder_id
+        repo.save_alignment(alignment, repo.list_alignment_sequences(alignment_id))
+        self.log_audit(
+            EventType.ALIGNMENT_UPDATE, alignment_id, f"Moved alignment '{alignment.name}'"
+        )
+        self.touch()
+        return alignment
+
+    def delete_alignment(self, alignment_id: str) -> None:
+        repo = self.require_writable()
+        alignment = repo.get_alignment(alignment_id)
+        if alignment is None:
+            raise NoOpenProjectError(f"alignment {alignment_id} not found")
+        repo.delete_alignment(alignment_id)
+        self.log_audit(
+            EventType.ALIGNMENT_DELETE, alignment_id, f"Deleted alignment '{alignment.name}'"
+        )
+        self.touch()
 
     def touch(self) -> None:
         self._require_repo().touch_project(utc_now())

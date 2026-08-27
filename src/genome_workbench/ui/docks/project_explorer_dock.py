@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from genome_workbench.domain.models import Folder, SequenceRecord, Topology
+from genome_workbench.domain.models import Alignment, Folder, SequenceRecord, Topology
 
 _ITEM_TYPE_ROLE = Qt.ItemDataRole.UserRole + 1
 _ROOT_CHOICE = "(Project root -- no folder)"
@@ -48,11 +48,16 @@ class ProjectExplorerDock(QDockWidget):
     deleteFolderRequested = Signal(str)  # folder id
     moveFolderRequested = Signal(str, str)  # folder id, new parent folder id ("" = root)
     pasteRegionRequested = Signal(str)  # target folder id ("" = root)
+    alignmentSelected = Signal(str)  # alignment id
+    renameAlignmentRequested = Signal(str, str)  # alignment id, new name
+    deleteAlignmentRequested = Signal(str)  # alignment id
+    moveAlignmentToFolderRequested = Signal(str, str)  # alignment id, folder id ("" = root)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("Project Explorer", parent)
         self._folders: list[Folder] = []
         self._records: list[SequenceRecord] = []
+        self._alignments: list[Alignment] = []
 
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["Record", "Type", "Length", "Topology", "Features"])
@@ -88,6 +93,8 @@ class ProjectExplorerDock(QDockWidget):
             self._prompt_delete_record(item_id, item_name)
         elif item_type == "folder":
             self._prompt_delete_folder(item_id, item_name)
+        elif item_type == "alignment":
+            self._prompt_delete_alignment(item_id, item_name)
 
     def _on_paste_key_pressed(self) -> None:
         """Ctrl+V here pastes whatever region was last copied (Ctrl+C on the
@@ -116,10 +123,15 @@ class ProjectExplorerDock(QDockWidget):
         records: list[SequenceRecord],
         folders: list[Folder],
         feature_counts: dict[str, int] | None = None,
+        alignments: list[Alignment] | None = None,
+        alignment_sequence_counts: dict[str, int] | None = None,
     ) -> None:
         feature_counts = feature_counts or {}
+        alignments = alignments or []
+        alignment_sequence_counts = alignment_sequence_counts or {}
         self._records = records
         self._folders = folders
+        self._alignments = alignments
 
         expanded_folder_ids = {
             item.data(0, Qt.ItemDataRole.UserRole)
@@ -127,9 +139,12 @@ class ProjectExplorerDock(QDockWidget):
             if item.data(0, _ITEM_TYPE_ROLE) == "folder" and item.isExpanded()
         }
         selected_record_id = None
+        selected_alignment_id = None
         current = self._tree.currentItem()
         if current is not None and current.data(0, _ITEM_TYPE_ROLE) == "record":
             selected_record_id = current.data(0, Qt.ItemDataRole.UserRole)
+        elif current is not None and current.data(0, _ITEM_TYPE_ROLE) == "alignment":
+            selected_alignment_id = current.data(0, Qt.ItemDataRole.UserRole)
 
         self._tree.clear()
 
@@ -176,6 +191,28 @@ class ProjectExplorerDock(QDockWidget):
             if record.id == selected_record_id:
                 self._tree.setCurrentItem(item)
 
+        for alignment in alignments:
+            item = QTreeWidgetItem(
+                [
+                    alignment.name or "(unnamed alignment)",
+                    "alignment",
+                    f"{alignment.length:,} cols",
+                    "-",
+                    f"{alignment_sequence_counts.get(alignment.id, 0)} seq",
+                ]
+            )
+            item.setData(0, Qt.ItemDataRole.UserRole, alignment.id)
+            item.setData(0, _ITEM_TYPE_ROLE, "alignment")
+            item.setIcon(
+                0, self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView)
+            )
+            if alignment.folder_id is not None and alignment.folder_id in folder_items:
+                folder_item_for(alignment.folder_id).addChild(item)
+            else:
+                self._tree.addTopLevelItem(item)
+            if alignment.id == selected_alignment_id:
+                self._tree.setCurrentItem(item)
+
     def _iter_all_items(self) -> Iterator[QTreeWidgetItem]:
         def walk(item: QTreeWidgetItem) -> Iterator[QTreeWidgetItem]:
             yield item
@@ -191,10 +228,16 @@ class ProjectExplorerDock(QDockWidget):
 
     def _on_selection_changed(self) -> None:
         items = self._tree.selectedItems()
-        if items and items[0].data(0, _ITEM_TYPE_ROLE) == "record":
-            record_id = items[0].data(0, Qt.ItemDataRole.UserRole)
-            if record_id:
-                self.recordSelected.emit(record_id)
+        if not items:
+            return
+        item_type = items[0].data(0, _ITEM_TYPE_ROLE)
+        item_id = items[0].data(0, Qt.ItemDataRole.UserRole)
+        if not item_id:
+            return
+        if item_type == "record":
+            self.recordSelected.emit(item_id)
+        elif item_type == "alignment":
+            self.alignmentSelected.emit(item_id)
 
     def _on_context_menu(self, position) -> None:
         # QMenu.exec() is a Shiboken-bound modal call that cannot be
@@ -232,6 +275,21 @@ class ProjectExplorerDock(QDockWidget):
                 self._dispatch_folder_action(key, item_id, item_name)
             return
 
+        if item_type == "alignment":
+            rename_alignment = menu.addAction("Rename Alignment...")
+            move_alignment = menu.addAction("Move to Folder...")
+            menu.addSeparator()
+            delete_alignment = menu.addAction("Delete Alignment...")
+            chosen = menu.exec(self._tree.viewport().mapToGlobal(position))
+            key = {
+                rename_alignment: "rename",
+                move_alignment: "move",
+                delete_alignment: "delete",
+            }.get(chosen)
+            if key is not None:
+                self._dispatch_alignment_action(key, item_id, item_name)
+            return
+
         set_linear = menu.addAction("Set Linear")
         set_circular = menu.addAction("Set Circular")
         menu.addSeparator()
@@ -267,6 +325,14 @@ class ProjectExplorerDock(QDockWidget):
             self._prompt_move_record(record_id)
         elif key == "delete_record":
             self._prompt_delete_record(record_id, record_name)
+
+    def _dispatch_alignment_action(self, key: str, alignment_id: str, alignment_name: str) -> None:
+        if key == "rename":
+            self._prompt_rename_alignment(alignment_id, alignment_name)
+        elif key == "move":
+            self._prompt_move_alignment(alignment_id)
+        elif key == "delete":
+            self._prompt_delete_alignment(alignment_id, alignment_name)
 
     # -- Prompts (pure UI interaction; the actual mutation happens in MainWindow) --
 
@@ -311,6 +377,28 @@ class ProjectExplorerDock(QDockWidget):
         target = self._choose_folder(exclude_folder_id=folder_id)
         if target is not None:
             self.moveFolderRequested.emit(folder_id, target)
+
+    def _prompt_rename_alignment(self, alignment_id: str, current_name: str) -> None:
+        name, ok = QInputDialog.getText(self, "Rename Alignment", "New name:", text=current_name)
+        if ok and name.strip():
+            self.renameAlignmentRequested.emit(alignment_id, name.strip())
+
+    def _prompt_move_alignment(self, alignment_id: str) -> None:
+        target = self._choose_folder(exclude_folder_id=None)
+        if target is not None:
+            self.moveAlignmentToFolderRequested.emit(alignment_id, target)
+
+    def _prompt_delete_alignment(self, alignment_id: str, name: str) -> None:
+        answer = QMessageBox.warning(
+            self,
+            "Delete Alignment",
+            f'Permanently delete alignment "{name}" from this project?\n\n'
+            "This cannot be undone. The original imported file on disk is not affected.",
+            buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            defaultButton=QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.deleteAlignmentRequested.emit(alignment_id)
 
     def _choose_folder(self, exclude_folder_id: str | None) -> str | None:
         paths = _folder_paths(self._folders)

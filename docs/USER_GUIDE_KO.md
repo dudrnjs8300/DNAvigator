@@ -1,12 +1,12 @@
 # DNAvigator 사용자 매뉴얼 (한국어)
 
-버전: 0.3.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
+버전: 0.5.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
 
 ## 1. 설치
 
 ### Installer (권장)
 
-GitHub Releases(`https://github.com/dudrnjs8300/genome-workbench/releases/latest`)에서
+GitHub Releases(`https://github.com/dudrnjs8300/DNAvigator/releases/latest`)에서
 `DNAvigator-X.Y.Z-win-x64-setup.exe`를 내려받아 실행한다. 관리자 권한이 필요 없다.
 자세한 단계는 저장소 루트의 `README.md` 참고.
 
@@ -173,17 +173,34 @@ hit을 선택한 뒤 **Apply as Annotation...** 을 클릭한다. 대화상자�
 - 행별 **Reset** 버튼 또는 **Reset All to Defaults**로 기본값으로 되돌릴 수 있다.
 - 설정한 색은 project가 아니라 사용자 전역으로 저장되어(`%LOCALAPPDATA%\DNAvigator\feature_colors.json`) 다른 project를 열어도 그대로 적용된다.
 
-**View > Export View as Image...**로 현재 보고 있는 Genome Map 또는 Circular Map 탭을 그림 파일로 저장할 수 있다(Feature Table 탭에서는 사용할 수 없음).
+**View > Export View as Image...**로 현재 보고 있는 Genome Map, Circular Map, Alignment View 탭을 그림 파일로 저장할 수 있다(Feature Table 탭에서는 사용할 수 없음).
 
 - **PNG**를 선택하면 해상도 배율(1x/2x/3x/4x)을 물어본다 — 논문이나 인쇄용으로 쓰려면 3x 이상을 권장한다.
 - **SVG**를 선택하면 벡터 파일로 저장되어 어떤 크기로 확대해도 깨지지 않는다.
 - feature 화살표는 은은한 그라데이션으로 그려져 화면 스크린샷보다 또렷하게 인쇄된다.
 
-## 14. Project 동시 열기 / 비정상 종료
+## 14. Alignment View (여러 서열 비교)
+
+이미 정렬(align)된 서열 여러 개를 한 화면에서 비교하고, 서로 다른 부위를 한눈에 확인할 수 있는 기능이다. 자체적으로 정렬을 수행하지는 않으며, 이미 MSA(Multiple Sequence Alignment) 프로그램으로 정렬을 마친 파일을 불러와 보여준다.
+
+**File > Import Alignment...**로 정렬 파일을 연다. FASTA(gap 문자 `-` 포함), Clustal(`.aln`), Stockholm(`.sto`), PHYLIP(`.phy`), NEXUS(`.nex`), MSF 형식을 지원하며, 확장자로 형식을 먼저 판별하고 실패하면 다른 형식들도 순서대로 시도한다. Record와 마찬가지로 Project Explorer에 나타나고, 폴더로 정리하거나 이름 변경/삭제할 수 있다(각각 우클릭 메뉴 또는 Delete 키).
+
+Project Explorer에서 정렬 항목을 클릭하면 **Alignment View** 탭이 자동으로 열린다:
+
+- 맨 위에는 **Consensus**(각 위치에서 가장 많이 나타나는 염기/아미노산) 행이 고정 표시된다.
+- 그 아래 **conservation bar**는 위치별로 서열들이 얼마나 다른지를 막대 높이로 보여준다 — 막대가 높을수록(붉을수록) 그 부위에서 서열 간 차이가 크다는 뜻이라, 확대하지 않고도 어디를 봐야 할지 바로 알 수 있다.
+- 각 서열 행은 염기/아미노산마다 색이 칠해지고, **consensus와 일치하는 칸은 옅게, 다른 칸은 진하게** 표시되어 차이가 나는 부위가 저절로 도드라진다.
+- 충분히 확대하면 칸 안에 글자(염기/아미노산)도 함께 표시된다.
+- **마우스 휠**로 좌우(열) 확대/축소, **Shift + 휠**로 좌우 이동. 서열이 화면보다 많으면 오른쪽 스크롤바로 위아래 이동한다.
+- 툴바의 **Zoom In / Zoom Out / Fit Whole Alignment** 버튼으로도 조작할 수 있다.
+
+**View > Alignment Colors...**(Alignment View 탭이 열려 있을 때 활성화)로 염기/아미노산별 색을 직접 지정할 수 있다 — 방식은 Feature Colors와 동일하며(색상 스와치 클릭, Reset, Add Residue...), 뉴클레오타이드용과 아미노산용 팔레트가 서로 분리되어 저장된다(`%LOCALAPPDATA%\DNAvigator\alignment_colors.json`).
+
+## 15. Project 동시 열기 / 비정상 종료
 
 같은 project 파일을 다른 DNAvigator 창(또는 이전에 비정상 종료된 세션)이 이미 열고 있으면, **Open Project**시 알림이 뜨고 **읽기 전용으로 열기** 또는 **강제로 편집 모드로 열기**(다른 인스턴스가 실제로 열려있지 않다고 확신할 때만) 중 선택할 수 있다.
 
-## 15. 문제 해결
+## 16. 문제 해결
 
 - **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\DNAvigator\logs`의 로그 파일을 확인한다.
 - **`DNAvigator.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\DNAvigator\last_self_test_output.json`에 모두 기록된다.

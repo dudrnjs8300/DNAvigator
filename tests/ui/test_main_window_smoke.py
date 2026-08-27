@@ -23,10 +23,11 @@ def test_main_window_launches_empty(qtbot, tmp_path):
     assert not window.action_add_feature.isEnabled()
     assert not window.action_export_genbank.isEnabled()
     # the central widget is the visualization, not a text/table view
-    assert window._tabs.count() == 3
+    assert window._tabs.count() == 4
     assert window._tabs.tabText(0) == "Genome Map"
     assert window._tabs.tabText(1) == "Circular Map"
     assert window._tabs.tabText(2) == "Feature Table"
+    assert window._tabs.tabText(3) == "Alignment View"
 
 
 def test_blast_menu_actions_are_enabled_and_never_crash_without_blast_installed(qtbot, tmp_path):

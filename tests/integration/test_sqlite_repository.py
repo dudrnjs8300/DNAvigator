@@ -5,6 +5,8 @@ import pytest
 
 from genome_workbench.domain.locations import LocationOperator, LocationPart
 from genome_workbench.domain.models import (
+    Alignment,
+    AlignmentSequence,
     Feature,
     Folder,
     MoleculeType,
@@ -212,6 +214,31 @@ def test_v1_project_auto_migrates_to_v2_with_folder_support(project_path: Path):
     repo.close()
 
 
+def test_v2_project_auto_migrates_to_v3_with_alignment_support(project_path: Path):
+    from genome_workbench.infrastructure.persistence.schema import _SCHEMA_V1, _SCHEMA_V2
+
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(project_path))
+    conn.executescript(_SCHEMA_V1)
+    conn.executescript(_SCHEMA_V2)
+    conn.execute("PRAGMA user_version = 2")
+    conn.execute(
+        "INSERT INTO project (id, name, schema_version, created_at, modified_at, app_version) "
+        "VALUES ('p1', 'Old Project', 2, 'now', 'now', '0.3.0')"
+    )
+    conn.commit()
+    conn.close()
+
+    repo = ProjectRepository.open_existing(project_path)
+    assert repo.get_project().name == "Old Project"
+    alignment = Alignment(name="new on upgraded project", length=4)
+    repo.save_alignment(
+        alignment, [AlignmentSequence(alignment_id=alignment.id, label="s1", sequence="ACGT")]
+    )
+    assert repo.get_alignment(alignment.id) is not None
+    repo.close()
+
+
 def test_initialize_schema_is_idempotent(project_path: Path):
     project_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(project_path))
@@ -371,4 +398,77 @@ def test_feature_rejects_unknown_provenance(project_path: Path):
     )
     with pytest.raises(ProjectRepositoryError):
         repo.save_feature(feature)
+    repo.close()
+
+
+def test_alignment_round_trip(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    alignment = Alignment(
+        name="msa1", molecule_type=MoleculeType.DNA, length=10, source_format="fasta"
+    )
+    sequences = [
+        AlignmentSequence(
+            alignment_id=alignment.id, label="seq1", sequence="ATG-CCGTAA", order_index=0
+        ),
+        AlignmentSequence(
+            alignment_id=alignment.id, label="seq2", sequence="ATGACCGTAA", order_index=1
+        ),
+    ]
+    repo.save_alignment(alignment, sequences)
+    repo.close()
+
+    reopened = ProjectRepository.open_existing(project_path)
+    fetched = reopened.get_alignment(alignment.id)
+    assert fetched is not None
+    assert fetched.name == "msa1"
+    assert fetched.length == 10
+    fetched_sequences = reopened.list_alignment_sequences(alignment.id)
+    assert [s.label for s in fetched_sequences] == ["seq1", "seq2"]
+    assert [s.sequence for s in fetched_sequences] == ["ATG-CCGTAA", "ATGACCGTAA"]
+    reopened.close()
+
+
+def test_alignment_list_and_delete(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    a1 = Alignment(name="first", length=4)
+    a2 = Alignment(name="second", length=4)
+    repo.save_alignment(a1, [AlignmentSequence(alignment_id=a1.id, label="s1", sequence="ACGT")])
+    repo.save_alignment(a2, [AlignmentSequence(alignment_id=a2.id, label="s1", sequence="ACGT")])
+
+    assert {a.id for a in repo.list_alignments()} == {a1.id, a2.id}
+
+    repo.delete_alignment(a1.id)
+    assert repo.get_alignment(a1.id) is None
+    assert repo.list_alignment_sequences(a1.id) == []
+    assert {a.id for a in repo.list_alignments()} == {a2.id}
+    repo.close()
+
+
+def test_alignment_save_replaces_full_sequence_set(project_path: Path):
+    """save_alignment always replaces every row -- there is no per-row
+    incremental edit UI, so a re-save with fewer rows must drop the
+    leftover rows rather than leaving them orphaned."""
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    alignment = Alignment(name="msa", length=4)
+    repo.save_alignment(
+        alignment,
+        [
+            AlignmentSequence(
+                alignment_id=alignment.id, label="s1", sequence="ACGT", order_index=0
+            ),
+            AlignmentSequence(
+                alignment_id=alignment.id, label="s2", sequence="ACGA", order_index=1
+            ),
+        ],
+    )
+    repo.save_alignment(
+        alignment,
+        [
+            AlignmentSequence(
+                alignment_id=alignment.id, label="s1-only", sequence="ACGT", order_index=0
+            )
+        ],
+    )
+    remaining = repo.list_alignment_sequences(alignment.id)
+    assert [s.label for s in remaining] == ["s1-only"]
     repo.close()

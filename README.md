@@ -11,7 +11,7 @@
 
 1. 아래 링크를 눌러서 **최신 버전 다운로드 페이지**로 이동하세요.
 
-   👉 **[최신 버전 다운로드](https://github.com/dudrnjs8300/genome-workbench/releases/latest)**
+   👉 **[최신 버전 다운로드](https://github.com/dudrnjs8300/DNAvigator/releases/latest)**
 
 2. 그 페이지에서 파일 이름이 `DNAvigator-...-win-x64-setup.exe`인 파일을 클릭해서 내려받으세요.
    (파일 이름에 `setup`이 들어간 게 설치 파일이에요.)
