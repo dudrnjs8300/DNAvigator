@@ -43,6 +43,7 @@ _ZOOM_STEP = 1.15
 class CircularGenomeCanvas(QWidget):
     featureClicked = Signal(str)
     featureDoubleClicked = Signal(str)
+    regionCopied = Signal(str, int, int, int)  # record_id, start0, end0, strand
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -223,6 +224,9 @@ class CircularGenomeCanvas(QWidget):
         )
         if text:
             QApplication.clipboard().setText(text)
+            self.regionCopied.emit(
+                self._record.id, feature.start0, feature.end0, feature.strand or 1
+            )
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.button() != Qt.MouseButton.LeftButton:
@@ -288,6 +292,10 @@ class CircularGenomeCanvas(QWidget):
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
         factor = _ZOOM_STEP if event.angleDelta().y() > 0 else 1.0 / _ZOOM_STEP
-        self._transform = self._transform.zoomed(factor)
+        center, _radius = self._center_and_radius()
+        cursor = event.position()
+        anchor_offset_x = cursor.x() - center.x()
+        anchor_offset_y = cursor.y() - center.y()
+        self._transform = self._transform.zoomed(factor, anchor_offset_x, anchor_offset_y)
         self.update()
         event.accept()

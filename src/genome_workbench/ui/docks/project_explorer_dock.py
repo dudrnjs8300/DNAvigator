@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QInputDialog,
@@ -47,6 +47,7 @@ class ProjectExplorerDock(QDockWidget):
     renameFolderRequested = Signal(str, str)  # folder id, new name
     deleteFolderRequested = Signal(str)  # folder id
     moveFolderRequested = Signal(str, str)  # folder id, new parent folder id ("" = root)
+    pasteRegionRequested = Signal(str)  # target folder id ("" = root)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("Project Explorer", parent)
@@ -66,10 +67,13 @@ class ProjectExplorerDock(QDockWidget):
             watched is self._tree
             and event.type() == QEvent.Type.KeyPress
             and isinstance(event, QKeyEvent)
-            and event.key() == Qt.Key.Key_Delete
         ):
-            self._on_delete_key_pressed()
-            return True
+            if event.key() == Qt.Key.Key_Delete:
+                self._on_delete_key_pressed()
+                return True
+            if event.matches(QKeySequence.StandardKey.Paste):
+                self._on_paste_key_pressed()
+                return True
         return super().eventFilter(watched, event)
 
     def _on_delete_key_pressed(self) -> None:
@@ -84,6 +88,28 @@ class ProjectExplorerDock(QDockWidget):
             self._prompt_delete_record(item_id, item_name)
         elif item_type == "folder":
             self._prompt_delete_folder(item_id, item_name)
+
+    def _on_paste_key_pressed(self) -> None:
+        """Ctrl+V here pastes whatever region was last copied (Ctrl+C on the
+        Genome Map / Circular Map) as a new record, placed into the folder
+        that's currently selected -- or the folder containing the currently
+        selected record, if a record rather than a folder is selected. Root
+        ("") if nothing is selected or the selected record isn't in a folder.
+        The actual paste is handled by MainWindow (which owns the copied
+        region + project data); this only resolves the *destination*."""
+        target_folder_id = ""
+        items = self._tree.selectedItems()
+        if items:
+            item = items[0]
+            item_type = item.data(0, _ITEM_TYPE_ROLE)
+            item_id = item.data(0, Qt.ItemDataRole.UserRole)
+            if item_type == "folder":
+                target_folder_id = item_id
+            elif item_type == "record":
+                record = next((r for r in self._records if r.id == item_id), None)
+                if record is not None and record.folder_id:
+                    target_folder_id = record.folder_id
+        self.pasteRegionRequested.emit(target_folder_id)
 
     def set_data(
         self,

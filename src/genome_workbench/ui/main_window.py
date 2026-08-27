@@ -96,6 +96,8 @@ class MainWindow(QMainWindow):
         self._pending_query_end0 = 0
         self._last_blast_result: BlastSearchResult | None = None
         self._batch_blast_features: dict[str, Feature] = {}
+        # (record_id, start0, end0, strand) most recently Ctrl+C'd on a canvas
+        self._region_clipboard: tuple[str, int, int, int] | None = None
 
         self._build_docks()
         self._build_central_tabs()
@@ -123,6 +125,7 @@ class MainWindow(QMainWindow):
         self.explorer_dock.renameFolderRequested.connect(self._on_rename_folder_requested)
         self.explorer_dock.deleteFolderRequested.connect(self._on_delete_folder_requested)
         self.explorer_dock.moveFolderRequested.connect(self._on_move_folder_requested)
+        self.explorer_dock.pasteRegionRequested.connect(self._on_paste_region_requested)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.explorer_dock)
 
         self.inspector_dock = InspectorDock(self)
@@ -157,11 +160,13 @@ class MainWindow(QMainWindow):
         self.genome_map_page.featureBoundaryEditRequested.connect(
             self._on_feature_boundary_edit_requested
         )
+        self.genome_map_page.regionCopied.connect(self._on_region_copied)
         self._tabs.addTab(self.genome_map_page, "Genome Map")
 
         self.circular_canvas = CircularGenomeCanvas(self)
         self.circular_canvas.featureClicked.connect(self._on_feature_selected_from_view)
         self.circular_canvas.featureDoubleClicked.connect(self._on_circular_feature_double_clicked)
+        self.circular_canvas.regionCopied.connect(self._on_region_copied)
         self._tabs.addTab(self.circular_canvas, "Circular Map")
 
         self.genome_map_page.set_color_overrides(self._color_overrides)
@@ -1054,18 +1059,67 @@ class MainWindow(QMainWindow):
     ) -> None:
         if not self._guard_project_open():
             return
-        new_record = self.sequence_ops_service.extract_as_new_record(record, start0, end0)
+        source_features = self.project_service.list_features(record.id)
+        new_record, new_features = self.sequence_ops_service.extract_as_new_record_with_features(
+            record, source_features, start0, end0
+        )
+        self._save_extracted_record(record, new_record, new_features, start0, end0)
+
+    def _save_extracted_record(
+        self,
+        source_record: SequenceRecord,
+        new_record: SequenceRecord,
+        new_features: list[Feature],
+        start0: int,
+        end0: int,
+        target_folder_id: str = "",
+    ) -> None:
+        if target_folder_id:
+            new_record.folder_id = target_folder_id
         repo = self.project_service.require_writable()
         repo.save_record(new_record)
+        for feature in new_features:
+            feature.record_id = new_record.id
+        repo.save_features_bulk(new_features)
         self.project_service.log_audit(
             EventType.SEQUENCE_OPERATION,
             new_record.id,
-            f"Extracted new record '{new_record.display_id}' from {record.display_id}:"
-            f"{start0 + 1}..{end0}",
+            f"Extracted new record '{new_record.display_id}' from {source_record.display_id}:"
+            f"{start0 + 1}..{end0} ({len(new_features)} feature(s) carried over)",
         )
         self.project_service.touch()
         self._refresh_project_explorer()
-        self._log(f"Created new record: {new_record.display_id} ({new_record.length} bp)")
+        self._log(
+            f"Created new record: {new_record.display_id} "
+            f"({new_record.length} bp, {len(new_features)} feature(s))"
+        )
+
+    def _on_region_copied(self, record_id: str, start0: int, end0: int, strand: int) -> None:
+        self._region_clipboard = (record_id, start0, end0, strand)
+
+    def _on_paste_region_requested(self, target_folder_id: str) -> None:
+        """Ctrl+V on the Project Explorer: pastes whatever region was last
+        copied (Ctrl+C on the Genome Map / Circular Map) as a new record --
+        with the annotations inside that region carried over, not just the
+        raw bases (user-reported gap)."""
+        if self._region_clipboard is None:
+            return
+        if not self._guard_project_open():
+            return
+        record_id, start0, end0, strand = self._region_clipboard
+        source_record = self.project_service.get_record(record_id)
+        if source_record is None:
+            QMessageBox.warning(
+                self, "Paste", "The copied region's source record no longer exists."
+            )
+            return
+        source_features = self.project_service.list_features(record_id)
+        new_record, new_features = self.sequence_ops_service.extract_as_new_record_with_features(
+            source_record, source_features, start0, end0, strand
+        )
+        self._save_extracted_record(
+            source_record, new_record, new_features, start0, end0, target_folder_id
+        )
 
     def _reverse_complement_record_as_new(self, record: SequenceRecord) -> None:
         if not self._guard_project_open():

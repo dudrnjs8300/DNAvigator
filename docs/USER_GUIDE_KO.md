@@ -51,17 +51,17 @@ project를 열면 왼쪽 **Project Explorer**, 가운데 **Genome Map / Circular
 - **feature 경계 근처 드래그**: 선택된 단일 구간 feature의 시작/끝 좌표를 조정한다(compound feature는 지원하지 않으며 안내 메시지가 뜬다).
 - 상단 툴바: **Zoom In / Zoom Out / Fit Genome / Zoom to Selection** 버튼.
 - 하단 **minimap**: 클릭하거나 드래그하면 그 위치로 이동한다.
-- **Ctrl+C**: 드래그로 선택한 구간이 있으면 그 구간의 원시 염기서열을, feature를 클릭해 선택한 상태라면 그 feature의 생물학적 서열(strand/join 반영)을 클립보드로 복사한다.
+- **Ctrl+C**: 드래그로 선택한 구간이 있으면 그 구간의 원시 염기서열을, feature를 클릭해 선택한 상태라면 그 feature의 생물학적 서열(strand/join 반영)을 클립보드로 복사한다. 동시에 그 구간은 아래 "구간을 새 record로 붙여넣기(Ctrl+V)"에서 쓸 수 있도록 내부적으로도 기억된다.
 
 확대 수준에 따라 자동으로:
-- 전체 genome: 밀도 그래프
-- 중간 확대: 색상 strand 화살표(+가 오른쪽, -가 왼쪽) + label
+- 전체 genome을 한눈에 보는 최대 축소 상태: 밀도 그래프만 표시(개별 유전자 이름을 표시하기엔 너무 축소된 상태)
+- 그보다 조금이라도 확대하면: 색상 strand 화살표(+가 오른쪽, -가 왼쪽)와 함께 유전자 이름(label)이 바로 나타난다 — 화면 폭에 비해 화살표가 너무 좁아 글자가 안 들어가는 경우에만 이름이 생략된다
 - 세부 확대: 염기 문자(윗줄: 정방향, 아랫줄: 상보가닥), CDS라면 그 위에 번역된 amino acid도 표시
 
 **Circular Map** 탭은 현재 record의 topology가 실제로 **circular**일 때만 활성화되고, circular record를 선택하면 자동으로 그 탭이 기본으로 열린다(선형 지도는 언제든 탭을 눌러 볼 수 있다). linear record에서는 원형으로 표시할 근거(원점)가 없으므로 이 탭 자체가 비활성화된다. Project Explorer에서 record를 우클릭하면 **Set Circular / Set Linear**로 topology를 바꿀 수 있다.
 
 Circular Map에서도 마우스만으로 조작할 수 있다:
-- **마우스 휠**: 확대/축소(중심 기준).
+- **마우스 휠**: 확대/축소. 링의 고정된 중심이 아니라 **커서 위치를 기준으로** 확대되므로, 보고 있던 유전자가 확대 중에 화면 밖으로 밀려나지 않는다.
 - **빈 배경 위에서 드래그**: 링을 회전시킨다(관심 있는 유전자를 원하는 각도로 돌려서 볼 수 있다). feature 위에서 드래그를 시작하면 대신 선택된다(기존 클릭 동작 유지).
 - 다른 record를 선택하면 확대/회전 상태는 자동으로 초기화된다.
 - **Ctrl+C**: 선택된 feature의 생물학적 서열을 클립보드로 복사한다.
@@ -69,6 +69,11 @@ Circular Map에서도 마우스만으로 조작할 수 있다:
 Feature Table에서도 여러 행을 선택하고 **Ctrl+C**를 누르면 탭으로 구분된 텍스트(Label/Type/Start/End/Strand/Length/Gene/Product)로 복사되어 Excel 등에 바로 붙여넣을 수 있다.
 
 Project Explorer에서 record나 폴더를 선택하고 **Delete** 키를 누르면 우클릭 메뉴의 삭제와 동일한 확인 절차를 거쳐 삭제된다.
+
+**구간을 새 record로 붙여넣기(Ctrl+V)**: Genome Map이나 Circular Map에서 **Ctrl+C**로 구간(또는 feature)을 복사한 뒤, Project Explorer에서 붙여넣을 위치를 클릭하고 **Ctrl+V**를 누르면 그 구간만 잘라낸 새 record가 만들어져 project에 추가된다. 이때 그 구간 안에 완전히 포함된 annotation(gene, CDS 등)도 좌표가 새 record 기준으로 자동 재계산되어 함께 복사된다(구간 경계에 걸쳐 일부만 포함된 feature는 애매한 반쪽짜리 annotation이 되는 것을 막기 위해 복사되지 않는다). 붙여넣을 위치는:
+- **폴더를 클릭한 상태**라면 그 폴더 안에 생성된다.
+- **폴더 안에 있는 record를 클릭한 상태**라면 같은 폴더 안에 생성된다.
+- 아무것도 선택하지 않았거나 폴더에 속하지 않은 record를 선택한 상태라면 project 최상위에 생성된다.
 
 ## 5. 유전자/qualifier로 찾기 (Find)
 
@@ -106,7 +111,7 @@ Genome Map에서 구간을 드래그 선택한 뒤 우클릭하면:
 - **Copy Sequence / Copy Reverse Complement**: 클립보드로 복사
 - **Translate (+ strand) / Translate (- strand)**: 번역 결과를 바로 보여준다
 - **Export Selection as FASTA...**: 선택 구간만 FASTA로 저장
-- **Extract Selection as New Record...**: 선택 구간을 새 record로 project에 추가한다(원본은 바뀌지 않음)
+- **Extract Selection as New Record...**: 선택 구간을 새 record로 project에 추가한다(원본은 바뀌지 않음). 구간 안에 완전히 포함된 annotation도 함께 복사된다. **Ctrl+C** 후 Project Explorer에서 **Ctrl+V**를 누르는 것과 동일한 결과이며, 차이는 붙여넣을 폴더를 미리 선택해 둘 수 있는지 여부뿐이다.
 - **Reverse Complement Whole Record as New Record...**: 현재 record 전체의 reverse complement를 새 record로 추가한다
 
 ## 9. 여러 feature를 한 번에 편집하기 (Batch)

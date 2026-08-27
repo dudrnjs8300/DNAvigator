@@ -75,6 +75,30 @@ def test_wheel_zooms_in_and_out_on_circular_map(qtbot, tmp_path, monkeypatch):
     assert canvas.viewport_transform.zoom_scale < zoomed_scale
 
 
+def test_zooming_off_center_pans_to_keep_the_cursor_point_in_place(qtbot, tmp_path, monkeypatch):
+    """Previously zooming always grew the ring around a fixed center
+    regardless of cursor position, so a gene away from dead center would
+    drift off-screen as you zoomed in on it (user-reported gap)."""
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    window.resize(900, 700)
+    qtbot.addWidget(window)
+    with qtbot.waitExposed(window):
+        window.show()
+    _open_circular_project(window, tmp_path, monkeypatch)
+
+    canvas = window.circular_canvas
+    assert canvas.viewport_transform.pan_x == 0.0 and canvas.viewport_transform.pan_y == 0.0
+
+    off_center = QPointF(canvas.width() / 2 + 80, canvas.height() / 2 + 40)
+    canvas.wheelEvent(_wheel_event(off_center, 120))
+
+    # zooming on an off-center point must introduce a pan shift (toward that
+    # point) -- otherwise the ring only ever grows around dead center.
+    assert canvas.viewport_transform.zoom_scale > 1.0
+    assert canvas.viewport_transform.pan_x != 0.0
+    assert canvas.viewport_transform.pan_y != 0.0
+
+
 def test_drag_on_empty_background_rotates_the_ring(qtbot, tmp_path, monkeypatch):
     window = MainWindow(blast_work_dir=tmp_path / "blast_work")
     window.resize(900, 700)

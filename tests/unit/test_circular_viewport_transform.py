@@ -1,3 +1,5 @@
+import pytest
+
 from genome_workbench.ui.rendering.circular_viewport_transform import (
     MAX_ZOOM_SCALE,
     MIN_ZOOM_SCALE,
@@ -55,3 +57,42 @@ def test_transform_is_immutable_value_type():
     t2 = t1.zoomed(2.0)
     assert t1.zoom_scale == 1.0
     assert t2.zoom_scale == 2.0
+
+
+def test_zoom_with_zero_offset_does_not_pan():
+    """Zooming exactly on the ring center (the old, pre-anchor behavior)
+    must not introduce any pan drift."""
+    t = CircularViewportTransform().zoomed(2.0, 0.0, 0.0)
+    assert (t.pan_x, t.pan_y) == (0.0, 0.0)
+
+
+def test_zoom_with_anchor_offset_pans_to_keep_anchor_stationary():
+    """Previously zooming always grew the ring around a fixed center, so a
+    gene away from dead center would drift toward/off the edge of the
+    viewport as you zoomed in on it (user-reported gap: "zoom in 했을 때
+    가운데로 확대가 되어버리고 유전자를 볼 수가 없다"). The pan shift after
+    zooming with a nonzero anchor offset must follow (1 - factor) * offset
+    so the point under the anchor stays under the anchor."""
+    t = CircularViewportTransform().zoomed(2.0, 100.0, 50.0)
+    assert t.zoom_scale == 2.0
+    assert (t.pan_x, t.pan_y) == (-100.0, -50.0)
+
+
+def test_zoom_anchor_offset_uses_actual_clamped_factor_not_requested_factor():
+    """At the zoom limit, the *requested* factor may not be the one that
+    actually applies (scale gets clamped) -- using the requested factor for
+    the pan-shift math instead of the real one would drift the anchor point
+    away from the cursor right at the boundary."""
+    t = CircularViewportTransform(zoom_scale=7.0)
+    t = t.zoomed(2.0, 100.0, 0.0)  # requests scale 14.0, clamps to MAX (8.0)
+    assert t.zoom_scale == MAX_ZOOM_SCALE
+    actual_factor = MAX_ZOOM_SCALE / 7.0
+    expected_pan_x = (1 - actual_factor) * 100.0
+    assert t.pan_x == pytest.approx(expected_pan_x)
+
+
+def test_zoom_out_to_minimum_still_resets_pan_even_with_anchor_offset():
+    t = CircularViewportTransform(zoom_scale=1.2, pan_x=10.0, pan_y=10.0)
+    t = t.zoomed(0.1, 100.0, 100.0)  # would clamp to MIN_ZOOM_SCALE
+    assert t.zoom_scale == MIN_ZOOM_SCALE
+    assert (t.pan_x, t.pan_y) == (0.0, 0.0)

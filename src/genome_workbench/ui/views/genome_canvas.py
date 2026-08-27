@@ -52,6 +52,7 @@ class GenomeCanvas(QWidget):
     viewportChanged = Signal(int, int)  # view_start0, view_end0
     contextMenuRequestedAt = Signal(QPoint, int, int)  # global pos, start0, end0
     featureBoundaryEditRequested = Signal(str, int, int)  # feature_id, new_start0, new_end0
+    regionCopied = Signal(str, int, int, int)  # record_id, start0, end0, strand
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -225,7 +226,13 @@ class GenomeCanvas(QWidget):
         if lod == LodLevel.OVERVIEW:
             self._paint_density(painter)
         else:
-            self._paint_feature_lanes(painter, with_labels=(lod != LodLevel.GENE))
+            # Labels used to be suppressed at GENE-level zoom (tens-hundreds
+            # of kb visible), so a feature only got its name once zoomed in
+            # much further -- annoying when you just want to spot a gene
+            # from a comfortable distance. Now shown whenever a feature is
+            # wide enough on screen to fit its label (checked per-feature
+            # below), at every zoom level past the whole-genome overview.
+            self._paint_feature_lanes(painter, with_labels=True)
         if lod == LodLevel.BASE:
             self._paint_base_level(painter)
         self._paint_selection(painter)
@@ -404,7 +411,10 @@ class GenomeCanvas(QWidget):
         """Ctrl+C copies whichever selection is currently active: a
         drag-selected range copies its raw nucleotide text; a clicked feature
         copies its biological sequence (strand/join-aware, same extraction
-        used for BLAST queries and "extract as new record")."""
+        used for BLAST queries and "extract as new record"). Either way,
+        also emits regionCopied so MainWindow can offer "paste as new
+        record (with its annotations)" on the Project Explorer via Ctrl+V --
+        the system clipboard text alone can't carry structured feature data."""
         if self._record is None:
             return
         text: str | None = None
@@ -412,11 +422,15 @@ class GenomeCanvas(QWidget):
             start0, end0 = self._selection
             if end0 > start0:
                 text = self._record.sequence[start0:end0]
+                self.regionCopied.emit(self._record.id, start0, end0, 1)
         elif self._selected_feature_id is not None:
             feature = self._index.by_id(self._selected_feature_id)
             if feature is not None:
                 text = extract_sequence(
                     self._record.sequence, feature.parts, feature.strand, self._record.length
+                )
+                self.regionCopied.emit(
+                    self._record.id, feature.start0, feature.end0, feature.strand or 1
                 )
         if text:
             QApplication.clipboard().setText(text)

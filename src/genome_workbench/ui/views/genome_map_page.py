@@ -20,6 +20,7 @@ class GenomeMapPage(QWidget):
     selectionChanged = Signal(int, int)
     contextMenuRequestedAt = Signal(QPoint, int, int)
     featureBoundaryEditRequested = Signal(str, int, int)
+    regionCopied = Signal(str, int, int, int)  # record_id, start0, end0, strand
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -58,6 +59,7 @@ class GenomeMapPage(QWidget):
         self.canvas.contextMenuRequestedAt.connect(self.contextMenuRequestedAt)
         self.canvas.featureBoundaryEditRequested.connect(self.featureBoundaryEditRequested)
         self.canvas.viewportChanged.connect(self._on_viewport_changed)
+        self.canvas.regionCopied.connect(self.regionCopied)
         self.minimap.viewportRequested.connect(lambda s, e: self.canvas.set_viewport(s, e))
 
     def set_record(self, record: SequenceRecord | None, features: list[Feature]) -> None:
