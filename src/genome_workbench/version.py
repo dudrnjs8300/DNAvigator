@@ -1,3 +1,3 @@
 APP_NAME = "GenomeWorkbench"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 SCHEMA_VERSION = 1
