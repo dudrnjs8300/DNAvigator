@@ -137,12 +137,13 @@ class BlastService:
         )
         self._databases[database.id] = database
         self._save_catalog()
-        if self._project_service.is_open:
-            self._project_service.log_audit(
-                EventType.BLAST_DATABASE_CREATE,
-                database.id,
-                f"Created BLAST database '{name}' ({database.sequence_count} sequences)",
-            )
+        # No project audit-log call here deliberately: this method runs on a
+        # background QThread (see CallableWorker), but the project's SQLite
+        # connection was opened on the main thread and sqlite3 connections
+        # are single-thread-only ("SQLite objects created in a thread can
+        # only be used in that same thread") -- calling log_audit from here
+        # crashed every database creation whenever a project was open. The
+        # caller logs this on the main thread once the worker finishes.
         return database
 
     def remove_database(self, database_id: str) -> None:
@@ -200,12 +201,8 @@ class BlastService:
             query_source_end0=query_source_end0,
             query_source_strand=query_source_strand,
         )
-        if self._project_service.is_open:
-            self._project_service.log_audit(
-                EventType.BLAST_RUN,
-                database.id,
-                f"{program.value} vs '{database.name}': {len(parsed.hits)} hit(s)",
-            )
+        # Same reason as create_database: no SQLite access from this
+        # background-thread method. The caller logs this on the main thread.
         return search_result
 
     def run_batch_search(

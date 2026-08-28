@@ -2,6 +2,15 @@
 
 DNAvigator의 버전별 변경 사항이다. 최신 버전이 위에 온다.
 
+## v0.5.1 (2026-08-28)
+
+- **BLAST Database 생성/검색 크래시 수정**: project를 열어놓은 상태에서 **BLAST > Create
+  Database...**로 DB를 만들거나 BLAST 검색을 실행하면 "Database Creation Failed — SQLite
+  objects created in a thread can only be used in that same thread" 오류가 뜨며 실패하던
+  버그를 고쳤다. DB 생성/검색은 백그라운드 스레드에서 실행되는데, 그 안에서 (메인 스레드에서
+  열린) project의 SQLite 연결에 감사 로그를 직접 기록하려던 것이 원인이었다. 감사 로그 기록을
+  작업이 끝난 뒤 메인 스레드에서 하도록 옮겨서 해결했다.
+
 ## v0.5.0 (2026-08-27)
 
 - **Alignment View(신규)**: 이미 정렬(align)된 서열 여러 개를 비교하는 화면 추가.

@@ -1326,6 +1326,12 @@ class MainWindow(QMainWindow):
 
     def _on_database_created(self, database) -> None:
         self.blast_panel.set_databases(self.blast_service.list_databases())
+        if self.project_service.is_open:
+            self.project_service.log_audit(
+                EventType.BLAST_DATABASE_CREATE,
+                database.id,
+                f"Created BLAST database '{database.name}' ({database.sequence_count} sequences)",
+            )
         self._log(f"Created BLAST database '{database.name}' ({database.sequence_count} sequences)")
         self._active_worker = None
         self.blast_panel.set_job_running(False)
@@ -1400,7 +1406,9 @@ class MainWindow(QMainWindow):
             self._pending_query_end0,
             1,
         ).with_cancel_support()
-        worker.succeeded.connect(self._on_blast_search_finished)
+        worker.succeeded.connect(
+            lambda result, db=database: self._on_blast_search_finished(result, db)
+        )
         worker.failed.connect(lambda msg: self._on_blast_job_failed("BLAST Search", msg))
         self._active_worker = worker
         self.blast_panel.set_job_running(
@@ -1408,9 +1416,15 @@ class MainWindow(QMainWindow):
         )
         worker.start()
 
-    def _on_blast_search_finished(self, result: BlastSearchResult) -> None:
+    def _on_blast_search_finished(self, result: BlastSearchResult, database) -> None:
         self._last_blast_result = result
         self.blast_panel.set_result(result)
+        if self.project_service.is_open:
+            self.project_service.log_audit(
+                EventType.BLAST_RUN,
+                database.id,
+                f"{result.program.value} vs '{database.name}': {len(result.hits)} hit(s)",
+            )
         self._log(f"BLAST search complete: {len(result.hits)} hit(s)")
         self._active_worker = None
         self.blast_panel.set_job_running(False)
@@ -1483,7 +1497,9 @@ class MainWindow(QMainWindow):
             queries,
             params,
         ).with_cancel_support()
-        worker.succeeded.connect(self._on_batch_blast_finished)
+        worker.succeeded.connect(
+            lambda results, db=database: self._on_batch_blast_finished(results, db)
+        )
         worker.failed.connect(lambda msg: self._on_blast_job_failed("Batch BLAST", msg))
         self._active_worker = worker
         self.blast_panel.set_job_running(
@@ -1491,9 +1507,16 @@ class MainWindow(QMainWindow):
         )
         worker.start()
 
-    def _on_batch_blast_finished(self, results: list) -> None:
+    def _on_batch_blast_finished(self, results: list, database) -> None:
         self._active_worker = None
         self.blast_panel.set_job_running(False)
+        if self.project_service.is_open:
+            for _feature_id, result in results:
+                self.project_service.log_audit(
+                    EventType.BLAST_RUN,
+                    database.id,
+                    f"{result.program.value} vs '{database.name}': {len(result.hits)} hit(s)",
+                )
         self._log(f"Batch BLAST complete: {len(results)} feature(s) processed")
         if self._current_record is None:
             return
