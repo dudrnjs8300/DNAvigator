@@ -311,8 +311,13 @@ class MainWindow(QMainWindow):
         self.action_blast_create_db = make_action(
             self, "Create Database...", self._on_create_database_requested
         )
+        self.action_blast_whole_record = make_action(
+            self, "Run BLAST on Whole Record...", self._on_run_blast_whole_record_requested
+        )
         blast_menu.addAction(self.action_blast_setup)
         blast_menu.addAction(self.action_blast_create_db)
+        blast_menu.addSeparator()
+        blast_menu.addAction(self.action_blast_whole_record)
 
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(make_action(self, "&About", self._on_about))
@@ -347,6 +352,7 @@ class MainWindow(QMainWindow):
         self.action_find_feature.setEnabled(has_records)
         self.action_zoom_whole_genome.setEnabled(has_record)
         self.action_zoom_selection.setEnabled(has_record)
+        self.action_blast_whole_record.setEnabled(has_record)
         self.action_export_image.setEnabled(has_record or self._current_alignment is not None)
         if is_open and self.project_service.is_read_only:
             self.statusBar().showMessage("Project open read-only", 5000)
@@ -1335,6 +1341,18 @@ class MainWindow(QMainWindow):
         self._log(f"Created BLAST database '{database.name}' ({database.sequence_count} sequences)")
         self._active_worker = None
         self.blast_panel.set_job_running(False)
+
+    def _on_run_blast_whole_record_requested(self) -> None:
+        """BLASTing an entire contig/assembly (e.g. screening a whole-genome
+        assembly against a resistance-gene database) shouldn't require
+        manually drag-selecting the full sequence on the Genome Map pixel
+        by pixel -- this queries the whole current record directly."""
+        if self._current_record is None:
+            QMessageBox.information(
+                self, "Run BLAST", "Select a record in the Project Explorer first."
+            )
+            return
+        self._start_blast_from_selection(self._current_record, 0, self._current_record.length)
 
     def _start_blast_from_selection(self, record: SequenceRecord, start0: int, end0: int) -> None:
         if not self.blast_service.list_databases():

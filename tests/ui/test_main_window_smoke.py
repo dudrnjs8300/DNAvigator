@@ -37,9 +37,12 @@ def test_blast_menu_actions_are_enabled_and_never_crash_without_blast_installed(
     blast_menus = [m for m in menus if m.title() == "&BLAST"]
     assert len(blast_menus) == 1
     # setup/create-database entry points must always be reachable (never hidden),
-    # since a missing BLAST+ installation must be discoverable/explainable, not silent
-    for action in blast_menus[0].actions():
-        assert action.isEnabled()
+    # since a missing BLAST+ installation must be discoverable/explainable, not silent.
+    # ("Run BLAST on Whole Record..." is excluded here: it's disabled for a different,
+    # legitimate reason -- no record selected yet -- not because BLAST+ is missing.)
+    assert window.action_blast_setup.isEnabled()
+    assert window.action_blast_create_db.isEnabled()
+    assert not window.action_blast_whole_record.isEnabled()
     assert not window._blast_installation.is_fully_installed()
     assert window.blast_service.detect_installation() is not None  # never raises
 

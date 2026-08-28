@@ -20,7 +20,7 @@
 ; /LANG=korean) for unattended installs.
 
 #define MyAppName "DNAvigator"
-#define MyAppVersion "0.5.1"
+#define MyAppVersion "0.6.0"
 #define MyAppPublisher "DNAvigator Project"
 #define MyAppExeName "DNAvigator.exe"
 #define MyAppAssocExt ".gwbproj"

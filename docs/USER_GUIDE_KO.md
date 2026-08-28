@@ -1,6 +1,6 @@
 # DNAvigator 사용자 매뉴얼 (한국어)
 
-버전: 0.5.1 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
+버전: 0.6.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
 
 ## 1. 설치
 
@@ -144,7 +144,13 @@ Feature Table 탭에서 여러 행을 **Ctrl/Shift-클릭**으로 다중 선택�
 
 ### 9.3 BLAST 실행
 
-1. Genome Map에서 구간을 선택하고 우클릭 → **Run BLAST...**
+특정 구간만 검색하려면: Genome Map에서 구간을 선택하고 우클릭 → **Run BLAST...**
+
+**전체 contig/서열을 검색하려면**(예: WGS 어셈블리 전체를 resistance gene database에 대조): 매번 구간을 손으로 드래그해서 선택할 필요 없이, Project Explorer에서 record를 선택한 뒤 **BLAST > Run BLAST on Whole Record...** 를 누르면 그 record 전체 서열이 바로 쿼리로 설정된다.
+
+두 방법 모두 이어지는 단계는 동일하다:
+
+1. (위 두 방법 중 하나로 쿼리를 설정한다.)
 2. 하단 BLAST 패널에서 database, program(자동 제안됨), e-value, max target sequences 등을 확인/조정하고 **Run BLAST** 클릭.
 3. 실행 중에는 **Cancel Job** 버튼이 활성화된다 — 잘못된 database를 선택했거나 너무 오래 걸리면 눌러서 즉시 중단할 수 있다(database 생성 중에도 동일하게 사용 가능). 취소하는 동안에는 새 job을 시작할 수 없다.
 4. 결과 표에서 hit을 클릭하면 오른쪽에 HSP alignment(identity, coverage, e-value, bit score, aligned sequence)가 나타난다.

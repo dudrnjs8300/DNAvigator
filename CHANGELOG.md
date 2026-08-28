@@ -2,6 +2,13 @@
 
 DNAvigator의 버전별 변경 사항이다. 최신 버전이 위에 온다.
 
+## v0.6.0 (2026-08-28)
+
+- **BLAST > Run BLAST on Whole Record...(신규)**: 전체 contig/서열을 대상으로 BLAST 검색을
+  하려면 지금까지는 Genome Map에서 전체 길이를 손으로 정확히 드래그 선택해야 했다(WGS 어셈블리
+  전체를 resistance gene database 등에 대조하려는 사용자에게는 불편했던 부분). 이제 record만
+  선택한 뒤 이 메뉴를 누르면 별도 구간 선택 없이 그 record 전체가 바로 쿼리로 설정된다.
+
 ## v0.5.1 (2026-08-28)
 
 - **BLAST Database 생성/검색 크래시 수정**: project를 열어놓은 상태에서 **BLAST > Create

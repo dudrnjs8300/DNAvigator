@@ -256,6 +256,75 @@ def test_blast_run_and_apply_hit_as_annotation_end_to_end(qtbot, tmp_path, monke
     assert provenance.tool_name == "blastn"
 
 
+def test_run_blast_on_whole_record_requires_a_selected_record(qtbot, tmp_path, monkeypatch):
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    _open_project_with_fasta(window, tmp_path, monkeypatch)
+    # deliberately not selecting a record: window._current_record stays None
+
+    captured = {}
+    monkeypatch.setattr(
+        "genome_workbench.ui.main_window.QMessageBox.information",
+        staticmethod(lambda *a, **k: captured.setdefault("shown", a)),
+    )
+
+    window._on_run_blast_whole_record_requested()
+
+    assert "shown" in captured
+    assert window._pending_query_record is None
+
+
+def test_run_blast_on_whole_record_queries_the_full_sequence_without_a_selection(
+    qtbot, tmp_path, monkeypatch
+):
+    """User-reported gap: WGS users BLASTing a whole assembled contig (e.g.
+    against a resistance-gene database) shouldn't have to drag-select the
+    exact full sequence pixel by pixel on the Genome Map first."""
+    monkeypatch.setattr(CallableWorker, "start", lambda self: self.run())
+
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    record = _open_project_with_fasta(window, tmp_path, monkeypatch)
+    window._on_record_selected(record.id)
+    assert window.genome_map_page.canvas.current_selection() is None  # no manual selection made
+
+    from genome_workbench.infrastructure.blast.detector import REQUIRED_EXECUTABLES
+
+    window._blast_installation = BlastInstallation(
+        directory=str(FAKE_BLAST_DIR),
+        executables={name: str(FAKE_BLAST_DIR / f"{name}.bat") for name in REQUIRED_EXECUTABLES},
+        versions={name: "fake 1.0" for name in REQUIRED_EXECUTABLES},
+    )
+    window.blast_panel.set_installation(window._blast_installation)
+
+    db_source_fasta = tmp_path / "db_source.fasta"
+    db_source_fasta.write_text(">subject1\nACGTACGTACGTACGTACGT\n")
+
+    def _fake_create_db_exec(self):
+        self._source_edit.setText(str(db_source_fasta))
+        self._molecule_combo.setCurrentText("nucleotide")
+        self._name_edit.setText("test_db")
+        return 1
+
+    monkeypatch.setattr(CreateBlastDatabaseDialog, "exec", _fake_create_db_exec)
+    window._on_create_database_requested()
+
+    window._on_run_blast_whole_record_requested()
+
+    assert window._pending_query_record is not None
+    assert window._pending_query_record.id == record.id
+    assert window._pending_query_start0 == 0
+    assert window._pending_query_end0 == record.length
+
+    window.blast_panel._database_list.setCurrentRow(0)
+    window.blast_panel._program_combo.setCurrentText("blastn")
+    window._on_run_blast_requested()
+
+    assert window._last_blast_result is not None
+    assert window._last_blast_result.query_source_start0 == 0
+    assert window._last_blast_result.query_source_end0 == record.length
+
+
 def test_blastp_run_and_apply_hit_as_annotation_end_to_end(qtbot, tmp_path, monkeypatch):
     """The blastn UI e2e test above exercises the whole dispatch/dialog path
     for one program; this exercises the same path selecting blastp instead
