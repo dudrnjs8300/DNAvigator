@@ -7,6 +7,12 @@
 이런 분들이 쓰는 프로그램이에요: 유전체(genome) 데이터를 열어서 눈으로 확인하고, 특정 구간에
 이름표(annotation)를 붙이고 싶은 연구자/학생.
 
+## 스크린샷
+
+| Genome Map | Circular Map | Alignment View |
+| --- | --- | --- |
+| ![Genome Map: 유전자별로 색이 다른 화살표와 이름표가 보이는 선형 지도](docs/images/screenshot_genome_map.png) | ![Circular Map: 원형 유전체 지도](docs/images/screenshot_circular_map.png) | ![Alignment View: 여러 서열을 정렬해 다른 부위를 색으로 강조](docs/images/screenshot_alignment_view.png) |
+
 ## 설치하는 방법 (딱 3단계)
 
 1. 아래 링크를 눌러서 **최신 버전 다운로드 페이지**로 이동하세요.
