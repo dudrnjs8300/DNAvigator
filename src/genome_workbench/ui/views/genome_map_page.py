@@ -6,8 +6,8 @@ visualization is the core of the program, not a table).
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QScrollBar, QVBoxLayout, QWidget
 
 from genome_workbench.domain.models import Feature, SequenceRecord
 from genome_workbench.ui.views.genome_canvas import GenomeCanvas
@@ -27,6 +27,8 @@ class GenomeMapPage(QWidget):
 
         self.canvas = GenomeCanvas(self)
         self.minimap = Minimap(self)
+        self._position_scrollbar = QScrollBar(Qt.Orientation.Horizontal, self)
+        self._position_scrollbar.valueChanged.connect(self._on_scrollbar_moved)
 
         zoom_in_button = QPushButton("Zoom In")
         zoom_out_button = QPushButton("Zoom Out")
@@ -46,6 +48,7 @@ class GenomeMapPage(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.addLayout(toolbar)
         layout.addWidget(self.canvas, stretch=1)
+        layout.addWidget(self._position_scrollbar)
         layout.addWidget(self.minimap)
 
         zoom_in_button.clicked.connect(lambda: self._zoom_by(0.6))
@@ -61,6 +64,7 @@ class GenomeMapPage(QWidget):
         self.canvas.viewportChanged.connect(self._on_viewport_changed)
         self.canvas.regionCopied.connect(self.regionCopied)
         self.minimap.viewportRequested.connect(lambda s, e: self.canvas.set_viewport(s, e))
+        self._sync_scrollbar()
 
     def set_record(self, record: SequenceRecord | None, features: list[Feature]) -> None:
         self.canvas.set_record(record, features)
@@ -69,6 +73,7 @@ class GenomeMapPage(QWidget):
         if record is not None and self.canvas.viewport_transform is not None:
             vt = self.canvas.viewport_transform
             self.minimap.set_viewport(vt.view_start0, vt.view_end0)
+        self._sync_scrollbar()
         self._update_coordinate_label()
 
     def set_features(self, features: list[Feature]) -> None:
@@ -98,7 +103,35 @@ class GenomeMapPage(QWidget):
 
     def _on_viewport_changed(self, start0: int, end0: int) -> None:
         self.minimap.set_viewport(start0, end0)
+        self._sync_scrollbar()
         self._update_coordinate_label()
+
+    def _sync_scrollbar(self) -> None:
+        """Keeps the horizontal scrollbar's range/page/thumb in lock-step
+        with whatever changed the viewport (wheel zoom/pan on the canvas
+        itself, the minimap, the toolbar buttons, or a new record) --
+        blocking its own signal while doing so, since this is a reaction to
+        a viewport change rather than the cause of one."""
+        vt = self.canvas.viewport_transform
+        self._position_scrollbar.blockSignals(True)
+        if vt is None:
+            self._position_scrollbar.setRange(0, 0)
+            self._position_scrollbar.setEnabled(False)
+        else:
+            visible_length = max(1, vt.visible_length)
+            max_start = max(0, vt.sequence_length - visible_length)
+            self._position_scrollbar.setRange(0, max_start)
+            self._position_scrollbar.setPageStep(visible_length)
+            self._position_scrollbar.setSingleStep(max(1, visible_length // 20))
+            self._position_scrollbar.setValue(vt.view_start0)
+            self._position_scrollbar.setEnabled(max_start > 0)
+        self._position_scrollbar.blockSignals(False)
+
+    def _on_scrollbar_moved(self, value: int) -> None:
+        vt = self.canvas.viewport_transform
+        if vt is None:
+            return
+        self.canvas.set_viewport(value, value + vt.visible_length)
 
     def _update_coordinate_label(self) -> None:
         vt = self.canvas.viewport_transform

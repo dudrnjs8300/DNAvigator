@@ -6,6 +6,7 @@ testable widget and this page wires it up with the surrounding chrome.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QScrollBar, QVBoxLayout, QWidget
 
 from genome_workbench.domain.models import Alignment, AlignmentSequence
@@ -19,6 +20,8 @@ class AlignmentViewPage(QWidget):
         self.canvas = AlignmentCanvas(self)
         self._row_scrollbar = QScrollBar()
         self._row_scrollbar.valueChanged.connect(self.canvas.set_first_visible_row)
+        self._column_scrollbar = QScrollBar(Qt.Orientation.Horizontal, self)
+        self._column_scrollbar.valueChanged.connect(self._on_column_scrollbar_moved)
 
         zoom_in_button = QPushButton("Zoom In")
         zoom_out_button = QPushButton("Zoom Out")
@@ -40,23 +43,28 @@ class AlignmentViewPage(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.addLayout(toolbar)
         layout.addLayout(canvas_row)
+        layout.addWidget(self._column_scrollbar)
 
         zoom_in_button.clicked.connect(lambda: self._zoom_by(0.6))
         zoom_out_button.clicked.connect(lambda: self._zoom_by(1.6))
         fit_button.clicked.connect(self._on_fit)
         self.canvas.viewportChanged.connect(self._on_viewport_changed)
         self.canvas.columnClicked.connect(self._on_column_clicked)
+        self._sync_scrollbar()
+        self._sync_column_scrollbar()
 
     def set_alignment(
         self, alignment: Alignment | None, sequences: list[AlignmentSequence]
     ) -> None:
         self.canvas.set_alignment(alignment, sequences)
         self._sync_scrollbar()
+        self._sync_column_scrollbar()
         self._update_coordinate_label()
 
     def _on_fit(self) -> None:
+        # zoom_to_whole_alignment() emits viewportChanged synchronously,
+        # which _on_viewport_changed handles below (scrollbar + label).
         self.canvas.zoom_to_whole_alignment()
-        self._update_coordinate_label()
 
     def _zoom_by(self, factor: float) -> None:
         vt = self.canvas.viewport_transform
@@ -64,7 +72,6 @@ class AlignmentViewPage(QWidget):
             return
         zoomed = vt.zoomed(factor, vt.pixel_width / 2)
         self.canvas.set_viewport(zoomed.view_start0, zoomed.view_end0)
-        self._update_coordinate_label()
 
     def _sync_scrollbar(self) -> None:
         total = self.canvas.total_row_count
@@ -74,7 +81,34 @@ class AlignmentViewPage(QWidget):
         self._row_scrollbar.setPageStep(max(1, visible))
         self._row_scrollbar.setEnabled(max_first > 0)
 
+    def _sync_column_scrollbar(self) -> None:
+        """Mirrors GenomeMapPage's _sync_scrollbar: reacts to whatever
+        changed the viewport (wheel zoom/pan on the canvas, the toolbar
+        buttons, or a newly loaded alignment) rather than causing one, so
+        its own valueChanged signal is blocked while updating."""
+        vt = self.canvas.viewport_transform
+        self._column_scrollbar.blockSignals(True)
+        if vt is None:
+            self._column_scrollbar.setRange(0, 0)
+            self._column_scrollbar.setEnabled(False)
+        else:
+            visible_length = max(1, vt.visible_length)
+            max_start = max(0, vt.sequence_length - visible_length)
+            self._column_scrollbar.setRange(0, max_start)
+            self._column_scrollbar.setPageStep(visible_length)
+            self._column_scrollbar.setSingleStep(max(1, visible_length // 20))
+            self._column_scrollbar.setValue(vt.view_start0)
+            self._column_scrollbar.setEnabled(max_start > 0)
+        self._column_scrollbar.blockSignals(False)
+
+    def _on_column_scrollbar_moved(self, value: int) -> None:
+        vt = self.canvas.viewport_transform
+        if vt is None:
+            return
+        self.canvas.set_viewport(value, value + vt.visible_length)
+
     def _on_viewport_changed(self, start0: int, end0: int) -> None:
+        self._sync_column_scrollbar()
         self._update_coordinate_label()
 
     def _on_column_clicked(self, column: int) -> None:
