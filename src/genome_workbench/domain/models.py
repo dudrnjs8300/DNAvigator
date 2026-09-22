@@ -169,6 +169,41 @@ class AlignmentSequence:
 
 
 @dataclass(slots=True)
+class AlignmentFeature:
+    """An annotation (e.g. imported from a GFF3 file) attached to one row of
+    an alignment, not to the alignment as a whole -- a gene called on
+    isolate_KR01's own assembly has nothing to do with isolate_KR02's
+    coordinates. start0/end0 are ungapped positions on that row's own raw
+    (gap-stripped) sequence, the same coordinate space GFF3 describes;
+    mapping them to alignment columns for display happens at render time via
+    domain/alignment_analysis.py::ungapped_range_to_aligned_columns, since
+    the same feature lands on different columns depending on how many gaps
+    precede it in this row versus another.
+
+    Deliberately single-span (no compound/join support, unlike Feature) --
+    the bacterial-isolate annotation tools this is meant to consume
+    (Prokka/Bakta-style GFF3) emit one contiguous span per gene, and
+    supporting multi-segment markers would mean rendering several
+    discontiguous bars per feature for comparatively little benefit here.
+    """
+
+    id: str = field(default_factory=new_id)
+    alignment_sequence_id: str = ""
+    type: str = "misc_feature"
+    strand: int | None = 1
+    start0: int = 0
+    end0: int = 0
+    qualifiers: QualifierSet = field(default_factory=QualifierSet)
+
+    def computed_label(self) -> str:
+        for key in ("gene", "locus_tag", "product"):
+            value = self.qualifiers.get_first(key)
+            if value:
+                return value
+        return self.type
+
+
+@dataclass(slots=True)
 class Project:
     id: str = field(default_factory=new_id)
     name: str = "Untitled Project"

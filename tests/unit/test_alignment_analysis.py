@@ -1,4 +1,8 @@
-from genome_workbench.domain.alignment_analysis import consensus_sequence, conservation_scores
+from genome_workbench.domain.alignment_analysis import (
+    consensus_sequence,
+    conservation_scores,
+    ungapped_range_to_aligned_columns,
+)
 
 
 def test_consensus_sequence_majority_vote():
@@ -45,3 +49,30 @@ def test_conservation_scores_accepts_precomputed_consensus():
 
 def test_conservation_scores_empty_input():
     assert conservation_scores([]) == []
+
+
+def test_ungapped_range_maps_directly_when_no_gaps_precede():
+    assert ungapped_range_to_aligned_columns("ATGCCGTAA", 0, 3) == (0, 3)
+
+
+def test_ungapped_range_skips_leading_gaps():
+    # this row itself starts with a gap (shorter than the alignment), so its
+    # own ungapped position 0 is aligned column 2, not column 0
+    assert ungapped_range_to_aligned_columns("--ATGCCGTAA", 0, 3) == (2, 5)
+
+
+def test_ungapped_range_spans_a_gap_inserted_by_another_row_mid_feature():
+    # another sequence's 2bp insertion pads this row with '--' right in the
+    # middle of what is, for this row, one contiguous feature
+    aligned = "ATG--CCGTAA"
+    assert ungapped_range_to_aligned_columns(aligned, 2, 7) == (2, 9)
+
+
+def test_ungapped_range_whole_sequence():
+    aligned = "ATG--CCGTAA"
+    assert ungapped_range_to_aligned_columns(aligned, 0, 9) == (0, 11)
+
+
+def test_ungapped_range_beyond_sequence_end_clamps_to_length():
+    aligned = "ATG--CCGTAA"
+    assert ungapped_range_to_aligned_columns(aligned, 20, 25) == (11, 11)

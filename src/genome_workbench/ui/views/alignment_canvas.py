@@ -31,10 +31,20 @@ from PySide6.QtGui import (
     QResizeEvent,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QToolTip, QWidget
 
-from genome_workbench.domain.alignment_analysis import consensus_sequence, conservation_scores
-from genome_workbench.domain.models import Alignment, AlignmentSequence, MoleculeType
+from genome_workbench.domain.alignment_analysis import (
+    consensus_sequence,
+    conservation_scores,
+    ungapped_range_to_aligned_columns,
+)
+from genome_workbench.domain.models import (
+    Alignment,
+    AlignmentFeature,
+    AlignmentSequence,
+    MoleculeType,
+)
+from genome_workbench.ui.rendering.feature_colors import feature_color
 from genome_workbench.ui.rendering.nucleotide_colors import cell_color
 from genome_workbench.ui.rendering.viewport_transform import ViewportTransform
 
@@ -42,6 +52,8 @@ _RULER_HEIGHT = 24
 _CONSENSUS_ROW_HEIGHT = 20
 _CONSERVATION_BAR_HEIGHT = 18
 _ROW_HEIGHT = 18
+_MARKER_HEIGHT = 4
+_ROW_STRIDE = _ROW_HEIGHT + _MARKER_HEIGHT
 _LABEL_GUTTER_WIDTH = 140
 _SHOW_CELLS_MIN_PX = 2.0
 _SHOW_LETTERS_MIN_PX = 8.0
@@ -50,11 +62,13 @@ _SHOW_LETTERS_MIN_PX = 8.0
 class AlignmentCanvas(QWidget):
     viewportChanged = Signal(int, int)  # view_start0, view_end0 (columns)
     columnClicked = Signal(int)  # 0-based column index
+    featureClicked = Signal(str)  # AlignmentFeature id
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumHeight(160)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)
 
         self._alignment: Alignment | None = None
         self._sequences: list[AlignmentSequence] = []
@@ -63,6 +77,9 @@ class AlignmentCanvas(QWidget):
         self._viewport: ViewportTransform | None = None
         self._first_visible_row = 0
         self._color_overrides: dict[str, str] = {}
+        self._feature_color_overrides: dict[str, str] = {}
+        self._features_by_sequence_id: dict[str, list[AlignmentFeature]] = {}
+        self._features_by_id: dict[str, AlignmentFeature] = {}
         self._mono_font = QFont("Consolas", 10)
 
     # -- Public API --------------------------------------------------------
@@ -73,6 +90,8 @@ class AlignmentCanvas(QWidget):
         self._alignment = alignment
         self._sequences = sequences
         self._first_visible_row = 0
+        self._features_by_sequence_id = {}
+        self._features_by_id = {}
         if alignment is not None and alignment.length > 0:
             rows = [s.sequence for s in sequences]
             self._consensus = consensus_sequence(rows)
@@ -86,9 +105,34 @@ class AlignmentCanvas(QWidget):
             self._viewport = None
         self.update()
 
+    def set_features(self, features: list[AlignmentFeature]) -> None:
+        """Annotations (typically imported from GFF3) to draw as a marker
+        bar above each row they belong to -- see
+        domain/models.py::AlignmentFeature for why each is single-span and
+        tied to one row's own ungapped coordinates."""
+        by_sequence: dict[str, list[AlignmentFeature]] = {}
+        for feature in features:
+            by_sequence.setdefault(feature.alignment_sequence_id, []).append(feature)
+        self._features_by_sequence_id = by_sequence
+        self._features_by_id = {f.id: f for f in features}
+        self.update()
+
     def set_color_overrides(self, overrides: dict[str, str]) -> None:
         self._color_overrides = overrides
         self.update()
+
+    def set_feature_color_overrides(self, overrides: dict[str, str]) -> None:
+        self._feature_color_overrides = overrides
+        self.update()
+
+    def feature_by_id(self, feature_id: str) -> AlignmentFeature | None:
+        return self._features_by_id.get(feature_id)
+
+    def sequence_label_for(self, alignment_sequence_id: str) -> str:
+        return next(
+            (s.label for s in self._sequences if s.id == alignment_sequence_id),
+            "",
+        )
 
     def zoom_to_whole_alignment(self) -> None:
         if self._alignment is None:
@@ -108,6 +152,15 @@ class AlignmentCanvas(QWidget):
         self._emit_viewport_changed()
         self.update()
 
+    def zoom_to_columns(self, start0: int, end0: int, padding_fraction: float = 0.15) -> None:
+        """Used by Find-in-Alignment (Ctrl+F) to jump to a motif/annotation
+        match -- same padding-aware fit as GenomeCanvas.zoom_to_range."""
+        if self._viewport is None:
+            return
+        self._viewport = self._viewport.fit_to_range(start0, end0, padding_fraction)
+        self._emit_viewport_changed()
+        self.update()
+
     @property
     def viewport_transform(self) -> ViewportTransform | None:
         return self._viewport
@@ -118,7 +171,7 @@ class AlignmentCanvas(QWidget):
 
     @property
     def visible_row_count(self) -> int:
-        return max(0, (self.height() - self._row_area_top()) // _ROW_HEIGHT)
+        return max(0, (self.height() - self._row_area_top()) // _ROW_STRIDE)
 
     @property
     def first_visible_row(self) -> int:
@@ -236,13 +289,34 @@ class AlignmentCanvas(QWidget):
         ]
         fm = QFontMetrics(self.font())
         for i, seq in enumerate(visible):
-            row_top = top + i * _ROW_HEIGHT
+            row_top = top + i * _ROW_STRIDE
             painter.setPen(QPen(self._fg_color()))
             label = seq.label
             if fm.horizontalAdvance(label) > _LABEL_GUTTER_WIDTH - 8:
                 label = fm.elidedText(label, Qt.TextElideMode.ElideRight, _LABEL_GUTTER_WIDTH - 8)
-            painter.drawText(4, row_top + _ROW_HEIGHT - 5, label)
-            self._paint_row(painter, row_top, seq.sequence, is_consensus_row=False)
+            painter.drawText(4, row_top + _ROW_STRIDE - 7, label)
+            self._paint_feature_markers(painter, row_top, seq)
+            self._paint_row(painter, row_top + _MARKER_HEIGHT, seq.sequence, is_consensus_row=False)
+
+    def _paint_feature_markers(
+        self, painter: QPainter, row_top: int, sequence: AlignmentSequence
+    ) -> None:
+        assert self._viewport is not None
+        vt = self._viewport
+        features = self._features_by_sequence_id.get(sequence.id)
+        if not features:
+            return
+        painter.setPen(Qt.PenStyle.NoPen)
+        for feature in features:
+            col_start, col_end = ungapped_range_to_aligned_columns(
+                sequence.sequence, feature.start0, feature.end0
+            )
+            if col_end <= vt.view_start0 or col_start >= vt.view_end0:
+                continue
+            x0 = _LABEL_GUTTER_WIDTH + vt.genome_to_pixel(max(col_start, vt.view_start0))
+            x1 = _LABEL_GUTTER_WIDTH + vt.genome_to_pixel(min(col_end, vt.view_end0))
+            painter.setBrush(feature_color(feature.type, self._feature_color_overrides))
+            painter.drawRect(QRect(int(x0), row_top, max(1, int(x1 - x0)), _MARKER_HEIGHT))
 
     def _paint_row(
         self, painter: QPainter, top: int, sequence: str, is_consensus_row: bool
@@ -306,7 +380,44 @@ class AlignmentCanvas(QWidget):
         if x < 0:
             return
         column = self._viewport.pixel_to_genome(x)
+        hit = self._feature_at(event.position().x(), event.position().y())
+        if hit is not None:
+            self.featureClicked.emit(hit.id)
+            return
         self.columnClicked.emit(column)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        hit = self._feature_at(event.position().x(), event.position().y())
+        if hit is not None:
+            label = self.sequence_label_for(hit.alignment_sequence_id)
+            strand_map: dict[int | None, str] = {1: "+", -1: "-"}
+            tooltip = (
+                f"{hit.computed_label()}\n{hit.type}  "
+                f"{hit.start0 + 1}..{hit.end0}  strand {strand_map.get(hit.strand, '?')}"
+                f"\n({label})"
+            )
+            QToolTip.showText(event.globalPosition().toPoint(), tooltip, self)
+        else:
+            QToolTip.hideText()
+
+    def _feature_at(self, x: float, y: float) -> AlignmentFeature | None:
+        if self._viewport is None or not self._features_by_sequence_id:
+            return None
+        top = self._row_area_top()
+        if y < top or x < _LABEL_GUTTER_WIDTH:
+            return None
+        row_index = self._first_visible_row + int((y - top) // _ROW_STRIDE)
+        if row_index < 0 or row_index >= len(self._sequences):
+            return None
+        sequence = self._sequences[row_index]
+        column = self._viewport.pixel_to_genome(x - _LABEL_GUTTER_WIDTH)
+        for feature in self._features_by_sequence_id.get(sequence.id, []):
+            col_start, col_end = ungapped_range_to_aligned_columns(
+                sequence.sequence, feature.start0, feature.end0
+            )
+            if col_start <= column < col_end:
+                return feature
+        return None
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         if self._viewport is not None:

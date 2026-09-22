@@ -52,6 +52,7 @@ from genome_workbench.ui.dialogs.blast_setup_dialog import BlastSetupDialog
 from genome_workbench.ui.dialogs.create_blast_database_dialog import CreateBlastDatabaseDialog
 from genome_workbench.ui.dialogs.feature_colors_dialog import FeatureColorsDialog
 from genome_workbench.ui.dialogs.find_feature_dialog import FindFeatureDialog
+from genome_workbench.ui.dialogs.find_in_alignment_dialog import FindInAlignmentDialog
 from genome_workbench.ui.docks.blast_panel import BlastPanel
 from genome_workbench.ui.docks.inspector_dock import InspectorDock
 from genome_workbench.ui.docks.project_explorer_dock import ProjectExplorerDock
@@ -97,6 +98,7 @@ class MainWindow(QMainWindow):
         self._current_record: SequenceRecord | None = None
         self._current_feature: Feature | None = None
         self._current_alignment: Alignment | None = None
+        self._alignment_find_dialog: FindInAlignmentDialog | None = None
         self._blast_installation = BlastInstallation(directory=None)
         self._active_worker: CallableWorker | None = None
         self._pending_query_record: SequenceRecord | None = None
@@ -197,6 +199,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self.feature_table, "Feature Table")
 
         self.alignment_view_page = AlignmentViewPage(self)
+        self.alignment_view_page.featureClicked.connect(self._on_alignment_feature_clicked)
         self._tabs.addTab(self.alignment_view_page, "Alignment View")
 
         self.setCentralWidget(self._tabs)
@@ -212,6 +215,9 @@ class MainWindow(QMainWindow):
         self.action_import_gff3 = make_action(self, "Import GFF&3...", self._on_import_gff3)
         self.action_import_alignment = make_action(
             self, "Import &Alignment...", self._on_import_alignment
+        )
+        self.action_import_alignment_gff3 = make_action(
+            self, "Import GFF3 for &Alignment...", self._on_import_alignment_gff3
         )
         self.action_save_project = make_action(
             self, "&Save Project", self._on_save_project, shortcut="Ctrl+S"
@@ -248,6 +254,7 @@ class MainWindow(QMainWindow):
             self.action_import_genbank,
             self.action_import_gff3,
             self.action_import_alignment,
+            self.action_import_alignment_gff3,
             None,
             self.action_save_project,
             self.action_export_genbank,
@@ -346,6 +353,9 @@ class MainWindow(QMainWindow):
         self.action_import_genbank.setEnabled(writable)
         self.action_import_gff3.setEnabled(writable)
         self.action_import_alignment.setEnabled(writable)
+        self.action_import_alignment_gff3.setEnabled(
+            writable and self._current_alignment is not None
+        )
         self.action_alignment_colors.setEnabled(self._current_alignment is not None)
         self.action_undo.setEnabled(writable and self.project_service.undo_stack.can_undo)
         self.action_redo.setEnabled(writable and self.project_service.undo_stack.can_redo)
@@ -594,6 +604,20 @@ class MainWindow(QMainWindow):
         if outcome.alignments:
             self._on_alignment_selected(outcome.alignments[0].id)
 
+    def _on_import_alignment_gff3(self) -> None:
+        if not self._guard_project_open() or self._current_alignment is None:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import GFF3 for Alignment", "", "GFF3 (*.gff *.gff3 *.gz)"
+        )
+        if not path:
+            return
+        outcome = self.import_service.import_alignment_gff3(self._current_alignment.id, Path(path))
+        self._refresh_alignment_features()
+        self._log(f"Imported {len(outcome.features)} annotation(s) from {path}")
+        for issue in outcome.issues:
+            self._log(f"  [{issue.severity}] {issue.message}")
+
     def _on_save_project(self) -> None:
         if not self._guard_project_open():
             return
@@ -773,6 +797,7 @@ class MainWindow(QMainWindow):
             save_color_overrides(self._color_overrides, self._color_overrides_dir)
             self.genome_map_page.set_color_overrides(self._color_overrides)
             self.circular_canvas.set_color_overrides(self._color_overrides)
+            self.alignment_view_page.canvas.set_feature_color_overrides(self._color_overrides)
             self._log("Feature colors updated.")
 
     def _on_export_image_requested(self) -> None:
@@ -936,8 +961,23 @@ class MainWindow(QMainWindow):
                     self._alignment_color_overrides, alignment.molecule_type
                 )
             )
+            self._refresh_alignment_features()
             self._tabs.setCurrentWidget(self.alignment_view_page)
         self._update_action_states()
+
+    def _refresh_alignment_features(self) -> None:
+        if self._current_alignment is None:
+            return
+        features = self.project_service.list_alignment_features(self._current_alignment.id)
+        self.alignment_view_page.canvas.set_features(features)
+        self.alignment_view_page.canvas.set_feature_color_overrides(self._color_overrides)
+
+    def _on_alignment_feature_clicked(self, feature_id: str) -> None:
+        feature = self.alignment_view_page.canvas.feature_by_id(feature_id)
+        if feature is None:
+            return
+        label = self.alignment_view_page.canvas.sequence_label_for(feature.alignment_sequence_id)
+        self.inspector_dock.show_alignment_feature(feature, label)
 
     def _on_alignment_colors_requested(self) -> None:
         if self._current_alignment is None:
@@ -975,6 +1015,12 @@ class MainWindow(QMainWindow):
     def _on_find_feature_requested(self) -> None:
         if not self._guard_project_open():
             return
+        # Ctrl+F is context-aware: while the Alignment View tab is showing an
+        # alignment, "find" means a sequence motif or name, not a genome
+        # feature -- alignments don't have genome-style features to search.
+        if self._tabs.currentWidget() is self.alignment_view_page and self._current_alignment:
+            self._on_find_in_alignment_requested()
+            return
         self.find_dialog.open_for_search()
 
     def _on_find_feature_chosen(self, record_id: str, feature_id: str) -> None:
@@ -983,6 +1029,29 @@ class MainWindow(QMainWindow):
         self._tabs.setCurrentWidget(self.genome_map_page)
         self.genome_map_page.zoom_to_feature(feature_id)
         self._on_feature_selected_from_view(feature_id)
+
+    def _on_find_in_alignment_requested(self) -> None:
+        if self._current_alignment is None:
+            return
+        sequences = self.project_service.list_alignment_sequences(self._current_alignment.id)
+        dialog = FindInAlignmentDialog(sequences, self)
+        dialog.resultChosen.connect(self._on_alignment_find_result_chosen)
+        self._alignment_find_dialog = dialog  # keep alive: non-modal, no other owner
+        dialog.open_for_search()
+
+    def _on_alignment_find_result_chosen(
+        self, alignment_sequence_id: str, col_start: int, col_end: int
+    ) -> None:
+        if self._current_alignment is None:
+            return
+        sequences = self.project_service.list_alignment_sequences(self._current_alignment.id)
+        row_index = next(
+            (i for i, s in enumerate(sequences) if s.id == alignment_sequence_id), None
+        )
+        self._tabs.setCurrentWidget(self.alignment_view_page)
+        if row_index is not None:
+            self.alignment_view_page.scroll_to_row(row_index)
+        self.alignment_view_page.canvas.zoom_to_columns(col_start, col_end)
 
     def _find_current_feature(self, feature_id: str) -> Feature | None:
         if self._current_record is None:

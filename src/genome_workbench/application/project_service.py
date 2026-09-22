@@ -8,6 +8,7 @@ from genome_workbench.application.commands import RecordTopologyChangeCommand, U
 from genome_workbench.domain.events import AuditEvent, EventType
 from genome_workbench.domain.models import (
     Alignment,
+    AlignmentFeature,
     AlignmentSequence,
     Feature,
     Folder,
@@ -232,6 +233,9 @@ class ProjectService:
 
     def list_alignment_sequences(self, alignment_id: str) -> list[AlignmentSequence]:
         return self._require_repo().list_alignment_sequences(alignment_id)
+
+    def list_alignment_features(self, alignment_id: str) -> list[AlignmentFeature]:
+        return self._require_repo().list_alignment_features(alignment_id)
 
     def save_alignment(self, alignment: Alignment, sequences: list[AlignmentSequence]) -> None:
         self.require_writable().save_alignment(alignment, sequences)

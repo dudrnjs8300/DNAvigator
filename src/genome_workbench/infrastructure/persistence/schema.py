@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 _SCHEMA_V1 = """
 CREATE TABLE project (
@@ -143,10 +143,33 @@ CREATE TABLE alignment_sequence (
 CREATE INDEX idx_alignment_sequence_alignment_id ON alignment_sequence(alignment_id);
 """
 
+_SCHEMA_V4 = """
+CREATE TABLE alignment_feature (
+    id TEXT PRIMARY KEY,
+    alignment_sequence_id TEXT NOT NULL REFERENCES alignment_sequence(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    strand INTEGER,
+    start0 INTEGER NOT NULL,
+    end0 INTEGER NOT NULL
+);
+CREATE INDEX idx_alignment_feature_sequence_id ON alignment_feature(alignment_sequence_id);
+
+CREATE TABLE alignment_feature_qualifier (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alignment_feature_id TEXT NOT NULL REFERENCES alignment_feature(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    seq_index INTEGER NOT NULL
+);
+CREATE INDEX idx_alignment_feature_qualifier_feature_id
+    ON alignment_feature_qualifier(alignment_feature_id);
+"""
+
 _MIGRATIONS: dict[int, str] = {
     1: _SCHEMA_V1,
     2: _SCHEMA_V2,
     3: _SCHEMA_V3,
+    4: _SCHEMA_V4,
 }
 
 

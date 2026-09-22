@@ -164,3 +164,98 @@ def test_main_window_import_select_rename_move_delete_alignment_flow(qtbot, tmp_
     assert window.project_service.get_alignment(alignment_id) is None
     assert window._current_alignment is None
     assert window.alignment_view_page.canvas.total_row_count == 0
+
+
+def test_main_window_gff3_annotation_flow_for_alignment(qtbot, tmp_path: Path):
+    fixtures_dir = Path(__file__).parent.parent / "fixtures"
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    window.project_service.create_new(tmp_path / "proj.gwbproj", "Alignment GFF3 Test")
+
+    outcome = window.import_service.import_alignment(fixtures_dir / "sample_alignment.fasta")
+    alignment_id = outcome.alignments[0].id
+    window._on_alignment_selected(alignment_id)
+    assert window.alignment_view_page.canvas.total_row_count == 3
+    # nothing annotated yet
+    assert window.project_service.list_alignment_features(alignment_id) == []
+
+    gff_outcome = window.import_service.import_alignment_gff3(
+        alignment_id, fixtures_dir / "sample_alignment_annotations.gff3"
+    )
+    window._refresh_alignment_features()  # mirrors what _on_import_alignment_gff3 does
+
+    assert len(gff_outcome.features) == 2
+    stored = window.project_service.list_alignment_features(alignment_id)
+    assert len(stored) == 2
+
+    canvas = window.alignment_view_page.canvas
+    seq_a = next(
+        s
+        for s in window.project_service.list_alignment_sequences(alignment_id)
+        if s.label == "seqA"
+    )
+    feature_on_seq_a = next(f for f in stored if f.alignment_sequence_id == seq_a.id)
+    assert canvas.feature_by_id(feature_on_seq_a.id) is not None
+
+    window._on_alignment_feature_clicked(feature_on_seq_a.id)
+    inspector_text = window.inspector_dock._alignment_feature_view.toPlainText()
+    assert "testGene" in inspector_text
+    assert "seqA" in inspector_text
+
+    # re-importing replaces rather than accumulates
+    window.import_service.import_alignment_gff3(
+        alignment_id, fixtures_dir / "sample_alignment_annotations.gff3"
+    )
+    assert len(window.project_service.list_alignment_features(alignment_id)) == 2
+
+
+def test_ctrl_f_opens_alignment_search_when_alignment_view_is_active(qtbot, tmp_path: Path):
+    fixtures_dir = Path(__file__).parent.parent / "fixtures"
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    window.project_service.create_new(tmp_path / "proj.gwbproj", "Ctrl+F Alignment Test")
+    outcome = window.import_service.import_alignment(fixtures_dir / "sample_alignment.fasta")
+    window._on_alignment_selected(outcome.alignments[0].id)
+    assert window._tabs.currentWidget() is window.alignment_view_page
+
+    window._on_find_feature_requested()
+
+    assert window._alignment_find_dialog is not None
+    assert window._alignment_find_dialog.isVisible()
+
+
+def test_ctrl_f_opens_genome_feature_search_when_genome_map_is_active(qtbot, tmp_path: Path):
+    fixtures_dir = Path(__file__).parent.parent / "fixtures"
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    window.project_service.create_new(tmp_path / "proj.gwbproj", "Ctrl+F Genome Test")
+    window.import_service.import_fasta(fixtures_dir / "simple_linear.fasta")
+    window._tabs.setCurrentWidget(window.genome_map_page)
+
+    window._on_find_feature_requested()
+
+    assert window.find_dialog.isVisible()
+    assert window._alignment_find_dialog is None
+
+
+def test_choosing_an_alignment_search_result_jumps_the_view(qtbot, tmp_path: Path):
+    fixtures_dir = Path(__file__).parent.parent / "fixtures"
+    window = MainWindow(blast_work_dir=tmp_path / "blast_work")
+    qtbot.addWidget(window)
+    window.project_service.create_new(tmp_path / "proj.gwbproj", "Ctrl+F Jump Test")
+    outcome = window.import_service.import_alignment(fixtures_dir / "sample_alignment.fasta")
+    alignment_id = outcome.alignments[0].id
+    window._on_alignment_selected(alignment_id)
+    # shrink so not every row fits on screen -- otherwise scrolling to row 1
+    # is a no-op since it (and everything else) is already visible
+    window.alignment_view_page.canvas.setFixedHeight(80)
+    window.alignment_view_page._sync_scrollbar()
+    sequences = window.project_service.list_alignment_sequences(alignment_id)
+    target = sequences[1]
+
+    window._on_alignment_find_result_chosen(target.id, 3, 8)
+
+    assert window._tabs.currentWidget() is window.alignment_view_page
+    assert window.alignment_view_page.canvas.first_visible_row == 1
+    vt = window.alignment_view_page.canvas.viewport_transform
+    assert vt.view_start0 <= 3 and vt.view_end0 >= 8

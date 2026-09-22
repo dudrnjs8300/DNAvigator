@@ -6,7 +6,7 @@ testable widget and this page wires it up with the surrounding chrome.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QScrollBar, QVBoxLayout, QWidget
 
 from genome_workbench.domain.models import Alignment, AlignmentSequence
@@ -14,6 +14,8 @@ from genome_workbench.ui.views.alignment_canvas import AlignmentCanvas
 
 
 class AlignmentViewPage(QWidget):
+    featureClicked = Signal(str)  # AlignmentFeature id
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
@@ -50,6 +52,7 @@ class AlignmentViewPage(QWidget):
         fit_button.clicked.connect(self._on_fit)
         self.canvas.viewportChanged.connect(self._on_viewport_changed)
         self.canvas.columnClicked.connect(self._on_column_clicked)
+        self.canvas.featureClicked.connect(self.featureClicked)
         self._sync_scrollbar()
         self._sync_column_scrollbar()
 
@@ -60,6 +63,12 @@ class AlignmentViewPage(QWidget):
         self._sync_scrollbar()
         self._sync_column_scrollbar()
         self._update_coordinate_label()
+
+    def scroll_to_row(self, row_index: int) -> None:
+        """Routed through the scrollbar (rather than canvas.set_first_visible_row
+        directly) so its thumb position stays in sync -- it's the only
+        listener that currently drives row scrolling."""
+        self._row_scrollbar.setValue(row_index)
 
     def _on_fit(self) -> None:
         # zoom_to_whole_alignment() emits viewportChanged synchronously,

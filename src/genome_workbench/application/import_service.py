@@ -7,8 +7,15 @@ from pathlib import Path
 
 from genome_workbench.application.project_service import ProjectService
 from genome_workbench.domain.events import EventType
-from genome_workbench.domain.models import Alignment, Feature, MoleculeType, SequenceRecord
+from genome_workbench.domain.models import (
+    Alignment,
+    AlignmentFeature,
+    Feature,
+    MoleculeType,
+    SequenceRecord,
+)
 from genome_workbench.infrastructure.formats.alignment_adapter import read_alignment
+from genome_workbench.infrastructure.formats.alignment_gff3_adapter import read_alignment_gff3
 from genome_workbench.infrastructure.formats.fasta_adapter import read_fasta
 from genome_workbench.infrastructure.formats.genbank_adapter import read_genbank
 from genome_workbench.infrastructure.formats.gff3_adapter import read_gff3
@@ -25,6 +32,12 @@ class ImportResult:
 @dataclass(slots=True)
 class AlignmentImportOutcome:
     alignments: list[Alignment] = field(default_factory=list)
+    issues: list[ImportIssue] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class AlignmentGff3ImportOutcome:
+    features: list[AlignmentFeature] = field(default_factory=list)
     issues: list[ImportIssue] = field(default_factory=list)
 
 
@@ -128,3 +141,22 @@ class ImportService:
             )
         self._project_service.touch()
         return AlignmentImportOutcome(alignments=parsed.alignments, issues=list(parsed.issues))
+
+    def import_alignment_gff3(self, alignment_id: str, path: Path) -> AlignmentGff3ImportOutcome:
+        """Replaces every existing annotation on this alignment's rows with
+        whatever this GFF3 file matches by seqid == sequence label (see
+        infrastructure/formats/alignment_gff3_adapter.py) -- re-importing is
+        meant to refresh the annotation set, not accumulate duplicates."""
+        repo = self._project_service.require_writable()
+        sequences = repo.list_alignment_sequences(alignment_id)
+        parsed = read_alignment_gff3(Path(path), sequences)
+        repo.delete_alignment_features_for_alignment(alignment_id)
+        repo.save_alignment_features_bulk(parsed.features)
+        if parsed.features:
+            self._project_service.log_audit(
+                EventType.IMPORT,
+                alignment_id,
+                f"Imported {len(parsed.features)} annotation(s) from GFF3: {Path(path).name}",
+            )
+        self._project_service.touch()
+        return AlignmentGff3ImportOutcome(features=parsed.features, issues=list(parsed.issues))

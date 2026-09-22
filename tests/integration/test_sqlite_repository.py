@@ -6,6 +6,7 @@ import pytest
 from genome_workbench.domain.locations import LocationOperator, LocationPart
 from genome_workbench.domain.models import (
     Alignment,
+    AlignmentFeature,
     AlignmentSequence,
     Feature,
     Folder,
@@ -471,4 +472,105 @@ def test_alignment_save_replaces_full_sequence_set(project_path: Path):
     )
     remaining = repo.list_alignment_sequences(alignment.id)
     assert [s.label for s in remaining] == ["s1-only"]
+    repo.close()
+
+
+def test_alignment_feature_round_trip_with_qualifiers(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    alignment = Alignment(name="msa", length=20)
+    seq = AlignmentSequence(alignment_id=alignment.id, label="isolate1", sequence="A" * 20)
+    repo.save_alignment(alignment, [seq])
+
+    qualifiers = QualifierSet.from_pairs([("gene", "blaTEM-1"), ("product", "beta-lactamase")])
+    feature = AlignmentFeature(
+        alignment_sequence_id=seq.id, type="CDS", strand=1, start0=5, end0=15, qualifiers=qualifiers
+    )
+    repo.save_alignment_feature(feature)
+    repo.close()
+
+    reopened = ProjectRepository.open_existing(project_path)
+    features = reopened.list_alignment_features(alignment.id)
+    assert len(features) == 1
+    fetched = features[0]
+    assert fetched.alignment_sequence_id == seq.id
+    assert fetched.type == "CDS"
+    assert fetched.strand == 1
+    assert (fetched.start0, fetched.end0) == (5, 15)
+    assert fetched.qualifiers.get_first("gene") == "blaTEM-1"
+    assert fetched.qualifiers.get_first("product") == "beta-lactamase"
+    reopened.close()
+
+
+def test_list_alignment_features_spans_every_row_of_the_alignment(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    alignment = Alignment(name="msa", length=20)
+    seq1 = AlignmentSequence(alignment_id=alignment.id, label="isolate1", sequence="A" * 20)
+    seq2 = AlignmentSequence(alignment_id=alignment.id, label="isolate2", sequence="A" * 20)
+    repo.save_alignment(alignment, [seq1, seq2])
+
+    repo.save_alignment_features_bulk(
+        [
+            AlignmentFeature(alignment_sequence_id=seq1.id, type="gene", start0=0, end0=5),
+            AlignmentFeature(alignment_sequence_id=seq2.id, type="gene", start0=10, end0=15),
+        ]
+    )
+
+    features = repo.list_alignment_features(alignment.id)
+    assert {f.alignment_sequence_id for f in features} == {seq1.id, seq2.id}
+    repo.close()
+
+
+def test_alignment_features_cascade_delete_with_the_alignment(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    alignment = Alignment(name="msa", length=20)
+    seq = AlignmentSequence(alignment_id=alignment.id, label="isolate1", sequence="A" * 20)
+    repo.save_alignment(alignment, [seq])
+    repo.save_alignment_feature(AlignmentFeature(alignment_sequence_id=seq.id, start0=0, end0=5))
+
+    repo.delete_alignment(alignment.id)
+
+    assert repo.list_alignment_features(alignment.id) == []
+    repo.close()
+
+
+def test_delete_alignment_features_for_alignment_clears_before_reimport(project_path: Path):
+    repo = ProjectRepository.create_new(project_path, Project(name="P", app_version="0.1.0"))
+    alignment = Alignment(name="msa", length=20)
+    seq = AlignmentSequence(alignment_id=alignment.id, label="isolate1", sequence="A" * 20)
+    repo.save_alignment(alignment, [seq])
+    repo.save_alignment_feature(AlignmentFeature(alignment_sequence_id=seq.id, start0=0, end0=5))
+
+    repo.delete_alignment_features_for_alignment(alignment.id)
+
+    assert repo.list_alignment_features(alignment.id) == []
+    repo.close()
+
+
+def test_v3_project_auto_migrates_to_v4_with_alignment_feature_support(project_path: Path):
+    from genome_workbench.infrastructure.persistence.schema import (
+        _SCHEMA_V1,
+        _SCHEMA_V2,
+        _SCHEMA_V3,
+    )
+
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(project_path))
+    conn.executescript(_SCHEMA_V1)
+    conn.executescript(_SCHEMA_V2)
+    conn.executescript(_SCHEMA_V3)
+    conn.execute("PRAGMA user_version = 3")
+    conn.execute(
+        "INSERT INTO project (id, name, schema_version, created_at, modified_at, app_version) "
+        "VALUES ('p1', 'Old Project', 3, 'now', 'now', '0.6.1')"
+    )
+    conn.commit()
+    conn.close()
+
+    repo = ProjectRepository.open_existing(project_path)
+    assert repo.get_project().name == "Old Project"
+    alignment = Alignment(name="msa", length=4)
+    seq = AlignmentSequence(alignment_id=alignment.id, label="s1", sequence="ACGT")
+    repo.save_alignment(alignment, [seq])
+    repo.save_alignment_feature(AlignmentFeature(alignment_sequence_id=seq.id, start0=0, end0=4))
+    assert len(repo.list_alignment_features(alignment.id)) == 1
     repo.close()

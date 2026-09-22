@@ -2,6 +2,20 @@
 
 DNAvigator의 버전별 변경 사항이다. 최신 버전이 위에 온다.
 
+## v0.8.0 (2026-09-22)
+
+- **Alignment View에 GFF3 annotation 추가(신규)**: 정렬한 서열에는 지금까지 유전자 정보가 전혀
+  없었는데, **File > Import GFF3 for Alignment...**로 각 isolate의 GFF3 파일(Prokka/Bakta 등)을
+  불러와 서열 이름(label)이 일치하는 행에 매칭시킬 수 있게 됐다. 매칭된 annotation은 해당 서열
+  행 위에 색상 마커 바로 표시되고, 클릭하면 Inspector에 상세 정보가 뜬다. 좌표는 그 서열 자신의
+  gap 없는 원본 좌표 기준이며, 다른 서열의 삽입으로 정렬 중간에 gap이 생겨도 마커가 끊기지 않고
+  이어진다. 단일 구간 annotation만 지원(join/compound 미지원).
+- **Alignment View에서 Ctrl+F로 서열 찾기(신규)**: Alignment View 탭이 활성화된 상태에서
+  Ctrl+F를 누르면 염기서열 모티프(예: ATCGGT)와 서열 이름(isolate 이름 등)을 한 검색창에서 동시에
+  찾는 **Find in Alignment** 창이 뜬다. 결과를 선택하면 그 위치로 화면이 자동으로 이동한다.
+- **화면 여백 축소**: BLAST 패널과 Inspector의 여백/간격을 줄여 더 조밀하고 정보가 잘 들어오는
+  레이아웃으로 다듬었다.
+
 ## v0.7.0 (2026-09-22)
 
 - **Genome Map / Alignment View에 가로 스크롤바 추가**: 확대한 상태에서 좌우로 이동하는 방법이

@@ -39,7 +39,7 @@ from genome_workbench.domain.locations import (
     build_ordered_parts_from_display_segments,
     extract_sequence,
 )
-from genome_workbench.domain.models import Feature, SequenceRecord
+from genome_workbench.domain.models import AlignmentFeature, Feature, SequenceRecord
 from genome_workbench.domain.qualifiers import QualifierSet
 from genome_workbench.domain.sequence_ops import translate
 from genome_workbench.domain.validation import validate_feature
@@ -60,10 +60,13 @@ class InspectorDock(QDockWidget):
         self._record_view = QPlainTextEdit()
         self._record_view.setReadOnly(True)
         self._feature_form = self._build_feature_form()
+        self._alignment_feature_view = QPlainTextEdit()
+        self._alignment_feature_view.setReadOnly(True)
 
         self._stack.addWidget(self._empty_label)
         self._stack.addWidget(self._record_view)
         self._stack.addWidget(self._feature_form)
+        self._stack.addWidget(self._alignment_feature_view)
         self.setWidget(self._stack)
 
     def _build_feature_form(self) -> QWidget:
@@ -148,6 +151,9 @@ class InspectorDock(QDockWidget):
         self._provenance_label = QLabel("")
 
         form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setVerticalSpacing(4)
+        form.setHorizontalSpacing(6)
         form.addRow("Type", self._type_edit)
         form.addRow("Strand", self._strand_combo)
         form.addRow(self._join_checkbox)
@@ -172,6 +178,8 @@ class InspectorDock(QDockWidget):
         buttons.addStretch()
 
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
         layout.addLayout(form)
         layout.addLayout(buttons)
         layout.addStretch()
@@ -278,6 +286,28 @@ class InspectorDock(QDockWidget):
         self._end_spin.setMaximum(max(record.length, 1))
         self._populate_form(feature)
         self._stack.setCurrentWidget(self._feature_form)
+
+    def show_alignment_feature(self, feature: AlignmentFeature, sequence_label: str) -> None:
+        """AlignmentFeature gets a plain read-only summary rather than the
+        full editable Feature form -- it isn't editable in place yet (GFF3
+        re-import is how annotations are refreshed), so an editable form
+        would invite edits that silently go nowhere."""
+        self._record = None
+        self._feature = None
+        strand_map: dict[int | None, str] = {1: "+", -1: "-"}
+        strand_text = strand_map.get(feature.strand, "?")
+        lines = [
+            f"Sequence: {sequence_label}",
+            f"Type: {feature.type}",
+            f"Strand: {strand_text}",
+            f"Position: {feature.start0 + 1}..{feature.end0} (this sequence's own coordinates)",
+        ]
+        for key in ("gene", "locus_tag", "product", "note"):
+            value = feature.qualifiers.get_first(key)
+            if value:
+                lines.append(f"/{key}: {value}")
+        self._alignment_feature_view.setPlainText("\n".join(lines))
+        self._stack.setCurrentWidget(self._alignment_feature_view)
 
     def clear(self) -> None:
         self._record = None

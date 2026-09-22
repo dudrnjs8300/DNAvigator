@@ -51,6 +51,8 @@ class BlastPanel(QDockWidget):
 
         container = QWidget()
         layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
 
         layout.addWidget(self._build_setup_group())
         layout.addWidget(self._build_run_group())
@@ -72,6 +74,8 @@ class BlastPanel(QDockWidget):
         self._database_list.setMaximumWidth(220)
 
         layout = QVBoxLayout(group)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
         layout.addWidget(self._installation_status_label)
         layout.addWidget(setup_button)
         layout.addWidget(QLabel("Registered databases:"))
@@ -108,6 +112,8 @@ class BlastPanel(QDockWidget):
         self._job_status_label.setWordWrap(True)
 
         layout = QVBoxLayout(group)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
         layout.addWidget(self._query_context_label)
         layout.addWidget(QLabel("Program"))
         layout.addWidget(self._program_combo)
@@ -141,6 +147,8 @@ class BlastPanel(QDockWidget):
         splitter.addWidget(self._hsp_view)
 
         layout = QVBoxLayout(group)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
         layout.addWidget(splitter, stretch=1)
         layout.addWidget(apply_button)
         return group

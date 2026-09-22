@@ -1,6 +1,6 @@
 # DNAvigator 사용자 매뉴얼 (한국어)
 
-버전: 0.7.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
+버전: 0.8.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
 
 ## 1. 설치
 
@@ -202,6 +202,26 @@ Project Explorer에서 정렬 항목을 클릭하면 **Alignment View** 탭이 �
 - 툴바의 **Zoom In / Zoom Out / Fit Whole Alignment** 버튼으로도 조작할 수 있다.
 
 **View > Alignment Colors...**(Alignment View 탭이 열려 있을 때 활성화)로 염기/아미노산별 색을 직접 지정할 수 있다 — 방식은 Feature Colors와 동일하며(색상 스와치 클릭, Reset, Add Residue...), 뉴클레오타이드용과 아미노산용 팔레트가 서로 분리되어 저장된다(`%LOCALAPPDATA%\DNAvigator\alignment_colors.json`).
+
+### 14.1 GFF3로 annotation 추가하기
+
+정렬한 서열들은 그 자체로는 어디가 유전자인지 알 수 없다. 이미 그 균주의 개별 조립(assembly)에 대해 GFF3로 유전자를 예측/주석해둔 파일(Prokka, Bakta 등의 결과물)이 있다면, 정렬에 그대로 얹어서 볼 수 있다.
+
+1. Project Explorer에서 정렬을 선택해 Alignment View를 연다.
+2. **File > Import GFF3 for Alignment...**를 선택하고 GFF3 파일을 고른다.
+3. GFF3의 seqid(첫 번째 열)가 정렬 안 서열의 이름(label)과 **정확히 일치**하는 줄만 그 서열에 매칭된다 — 일치하지 않는 seqid는 건너뛰고 Jobs & Log에 경고로 남는다.
+4. 매칭된 annotation은 해당 서열 행 위에 **색상 마커 바**로 표시된다(색상은 Genome Map의 Feature Colors와 동일한 설정을 공유). 마커에 마우스를 올리면 상세 정보가 툴팁으로 뜨고, 클릭하면 오른쪽 Inspector에 type/strand/좌표/qualifier가 표시된다.
+5. 좌표는 그 서열 자신의 원래(gap 없는) 좌표 기준이다 — 다른 서열의 삽입 때문에 정렬 중간에 gap이 생겨도 마커는 끊기지 않고 이어져 표시된다.
+6. 같은 정렬에 GFF3를 다시 불러오면 이전 annotation은 모두 지워지고 새로 대체된다(누적되지 않음). 지원하는 것은 단일 구간 annotation뿐이며(join/compound 미지원), Prokka/Bakta 같은 세균 유전체 주석 도구의 일반적인 출력과 맞는 형태다.
+
+### 14.2 서열 찾기 (Ctrl+F)
+
+Alignment View 탭이 활성화된 상태에서 **Ctrl+F**(또는 Edit > Find Feature...)를 누르면 Genome Map용 Find Feature 대신 **Find in Alignment** 창이 뜬다. 한 검색창에서 두 가지를 동시에 찾는다:
+
+- **염기서열 모티프**: `ATCGGT`처럼 실제 서열 조각을 입력하면, 각 서열 자신의 gap 없는 원본 서열을 기준으로 그 패턴이 있는 모든 위치를 찾는다(다른 서열의 삽입으로 생긴 gap이 모티프 중간에 끼어 있어도 정상적으로 찾는다).
+- **서열 이름**: isolate 이름 등 서열 label에 포함된 문자열도 함께 찾는다.
+
+결과 목록에서 항목을 더블클릭하거나 Enter를 누르면 그 서열이 있는 행으로 스크롤되고 해당 구간으로 확대된다.
 
 ## 15. Project 동시 열기 / 비정상 종료
 

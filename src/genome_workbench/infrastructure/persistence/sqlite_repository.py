@@ -12,6 +12,7 @@ from genome_workbench.domain.events import AuditEvent
 from genome_workbench.domain.locations import LocationOperator, LocationPart
 from genome_workbench.domain.models import (
     Alignment,
+    AlignmentFeature,
     AlignmentSequence,
     Feature,
     Folder,
@@ -292,6 +293,94 @@ class ProjectRepository:
 
     def delete_alignment(self, alignment_id: str) -> None:
         self._conn.execute("DELETE FROM alignment WHERE id = ?", (alignment_id,))
+        self._conn.commit()
+
+    # -- AlignmentFeature ----------------------------------------------------
+
+    def save_alignment_feature(self, feature: AlignmentFeature, commit: bool = True) -> None:
+        self._conn.execute(
+            """INSERT INTO alignment_feature
+               (id, alignment_sequence_id, type, strand, start0, end0)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 alignment_sequence_id=excluded.alignment_sequence_id, type=excluded.type,
+                 strand=excluded.strand, start0=excluded.start0, end0=excluded.end0""",
+            (
+                feature.id,
+                feature.alignment_sequence_id,
+                feature.type,
+                feature.strand,
+                feature.start0,
+                feature.end0,
+            ),
+        )
+        self._conn.execute(
+            "DELETE FROM alignment_feature_qualifier WHERE alignment_feature_id = ?",
+            (feature.id,),
+        )
+        seq_index = 0
+        for key, values in feature.qualifiers.items():
+            for value in values:
+                self._conn.execute(
+                    """INSERT INTO alignment_feature_qualifier
+                       (alignment_feature_id, key, value, seq_index) VALUES (?, ?, ?, ?)""",
+                    (feature.id, key, value, seq_index),
+                )
+                seq_index += 1
+        if commit:
+            self._conn.commit()
+
+    def save_alignment_features_bulk(self, features: list[AlignmentFeature]) -> None:
+        """Single commit for many rows -- see save_features_bulk for why a
+        per-row commit would make a large GFF3 import painfully slow."""
+        for feature in features:
+            self.save_alignment_feature(feature, commit=False)
+        self._conn.commit()
+
+    def list_alignment_features(self, alignment_id: str) -> list[AlignmentFeature]:
+        """All features across every row of one alignment, for rendering the
+        whole Alignment View at once instead of one query per row."""
+        feature_rows = self._conn.execute(
+            """SELECT af.* FROM alignment_feature af
+               JOIN alignment_sequence als ON af.alignment_sequence_id = als.id
+               WHERE als.alignment_id = ? ORDER BY af.rowid""",
+            (alignment_id,),
+        ).fetchall()
+        if not feature_rows:
+            return []
+        qualifiers_by_feature: dict[str, QualifierSet] = {}
+        for q in self._conn.execute(
+            """SELECT afq.* FROM alignment_feature_qualifier afq
+               JOIN alignment_feature af ON afq.alignment_feature_id = af.id
+               JOIN alignment_sequence als ON af.alignment_sequence_id = als.id
+               WHERE als.alignment_id = ? ORDER BY afq.alignment_feature_id, afq.seq_index""",
+            (alignment_id,),
+        ).fetchall():
+            qualifiers_by_feature.setdefault(q["alignment_feature_id"], QualifierSet()).add(
+                q["key"], q["value"]
+            )
+        return [
+            AlignmentFeature(
+                id=row["id"],
+                alignment_sequence_id=row["alignment_sequence_id"],
+                type=row["type"],
+                strand=row["strand"],
+                start0=row["start0"],
+                end0=row["end0"],
+                qualifiers=qualifiers_by_feature.get(row["id"], QualifierSet()),
+            )
+            for row in feature_rows
+        ]
+
+    def delete_alignment_features_for_alignment(self, alignment_id: str) -> None:
+        """Clears every existing annotation on this alignment's rows before a
+        fresh GFF3 import replaces them -- re-importing is meant to replace,
+        not accumulate duplicates alongside the old set."""
+        self._conn.execute(
+            """DELETE FROM alignment_feature WHERE alignment_sequence_id IN
+               (SELECT id FROM alignment_sequence WHERE alignment_id = ?)""",
+            (alignment_id,),
+        )
         self._conn.commit()
 
     @staticmethod

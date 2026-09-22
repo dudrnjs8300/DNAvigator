@@ -50,3 +50,34 @@ def conservation_scores(sequences: list[str], consensus: str | None = None) -> l
         matches = sum(1 for r in residues if r == consensus[col])
         scores.append(matches / len(residues))
     return scores
+
+
+def ungapped_range_to_aligned_columns(
+    aligned_sequence: str, start0: int, end0: int
+) -> tuple[int, int]:
+    """Maps an [start0, end0) range in this row's own ungapped (gap-stripped)
+    coordinates -- e.g. from a GFF3 annotation of its raw assembly -- to the
+    [col_start, col_end) alignment-column range to highlight for this row.
+
+    Spans from the column of the first residue in range through one past the
+    column of the last residue in range, so a gap that another sequence's
+    insertion pads into the *middle* of this range is included rather than
+    splitting the marker into fragments -- from this row's perspective nothing
+    is missing there, another row just has extra content alongside it.
+    """
+    col_start: int | None = None
+    col_end: int | None = None
+    count = 0
+    for col, ch in enumerate(aligned_sequence):
+        if ch in _GAP_CHARS:
+            continue
+        if count == start0:
+            col_start = col
+        if count == end0 - 1:
+            col_end = col + 1
+        count += 1
+    if col_start is None:
+        col_start = len(aligned_sequence)
+    if col_end is None:
+        col_end = len(aligned_sequence)
+    return col_start, col_end

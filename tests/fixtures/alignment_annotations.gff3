@@ -1,0 +1,5 @@
+##gff-version 3
+isolate1	prokka	gene	3	8	.	+	.	ID=g1;gene=blaTEM-1;product=beta-lactamase
+isolate1	prokka	CDS	3	8	.	+	0	ID=c1;Parent=g1;product=beta-lactamase
+isolate2	prokka	gene	1	4	.	-	.	ID=g2;gene=recA
+not_in_alignment	prokka	gene	1	5	.	+	.	ID=g3

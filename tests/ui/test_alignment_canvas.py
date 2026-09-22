@@ -1,7 +1,12 @@
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 
-from genome_workbench.domain.models import Alignment, AlignmentSequence, MoleculeType
+from genome_workbench.domain.models import (
+    Alignment,
+    AlignmentFeature,
+    AlignmentSequence,
+    MoleculeType,
+)
 from genome_workbench.ui.views.alignment_canvas import AlignmentCanvas
 
 pytestmark = pytest.mark.ui
@@ -106,3 +111,91 @@ def test_column_clicked_emits_signal(qtbot):
     with qtbot.waitSignal(canvas.columnClicked, timeout=1000) as blocker:
         qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=canvas.rect().center())
     assert isinstance(blocker.args[0], int)
+
+
+def test_set_features_groups_by_sequence_and_is_queryable_by_id(qtbot):
+    canvas = AlignmentCanvas()
+    qtbot.addWidget(canvas)
+    canvas.resize(800, 300)
+    alignment, sequences = _alignment_with_rows(length=20)
+    canvas.set_alignment(alignment, sequences)
+
+    feature = AlignmentFeature(alignment_sequence_id=sequences[0].id, type="CDS", start0=2, end0=7)
+    canvas.set_features([feature])
+
+    assert canvas.feature_by_id(feature.id) is feature
+    assert canvas.feature_by_id("does-not-exist") is None
+    assert canvas.sequence_label_for(sequences[0].id) == "seq0"
+
+
+def test_set_alignment_clears_previously_loaded_features(qtbot):
+    canvas = AlignmentCanvas()
+    qtbot.addWidget(canvas)
+    canvas.resize(800, 300)
+    alignment, sequences = _alignment_with_rows(length=20)
+    canvas.set_alignment(alignment, sequences)
+    feature = AlignmentFeature(alignment_sequence_id=sequences[0].id, start0=0, end0=5)
+    canvas.set_features([feature])
+
+    canvas.set_alignment(alignment, sequences)  # reload without re-setting features
+
+    assert canvas.feature_by_id(feature.id) is None
+
+
+def test_rendering_with_feature_markers_does_not_crash(qtbot):
+    canvas = AlignmentCanvas()
+    qtbot.addWidget(canvas)
+    canvas.resize(800, 300)
+    alignment, sequences = _alignment_with_rows(n_rows=5, length=20)
+    canvas.set_alignment(alignment, sequences)
+    canvas.set_features(
+        [
+            AlignmentFeature(alignment_sequence_id=sequences[0].id, type="CDS", start0=2, end0=7),
+            AlignmentFeature(alignment_sequence_id=sequences[1].id, type="gene", start0=0, end0=20),
+        ]
+    )
+    canvas.show()
+    canvas.grab()  # must not raise
+
+
+def test_clicking_a_feature_marker_emits_feature_clicked_instead_of_column_clicked(qtbot):
+    canvas = AlignmentCanvas()
+    qtbot.addWidget(canvas)
+    canvas.resize(800, 300)
+    alignment, sequences = _alignment_with_rows(length=20)
+    canvas.set_alignment(alignment, sequences)
+    feature = AlignmentFeature(alignment_sequence_id=sequences[0].id, type="CDS", start0=2, end0=7)
+    canvas.set_features([feature])
+    canvas.show()
+
+    vt = canvas.viewport_transform
+    x = 140 + vt.genome_to_pixel(4)  # column 4, inside the feature's 2..7 span
+    y = canvas._row_area_top() + 5  # within row 0's stride
+
+    column_signals = []
+    canvas.columnClicked.connect(column_signals.append)
+    with qtbot.waitSignal(canvas.featureClicked, timeout=1000) as blocker:
+        qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=QPoint(int(x), int(y)))
+    assert blocker.args[0] == feature.id
+    assert column_signals == []
+
+
+def test_clicking_outside_any_feature_still_emits_column_clicked(qtbot):
+    canvas = AlignmentCanvas()
+    qtbot.addWidget(canvas)
+    canvas.resize(800, 300)
+    alignment, sequences = _alignment_with_rows(length=20)
+    canvas.set_alignment(alignment, sequences)
+    feature = AlignmentFeature(alignment_sequence_id=sequences[0].id, type="CDS", start0=2, end0=7)
+    canvas.set_features([feature])
+    canvas.show()
+
+    vt = canvas.viewport_transform
+    x = 140 + vt.genome_to_pixel(15)  # column 15, outside the 2..7 feature span
+    y = canvas._row_area_top() + 5
+
+    feature_signals = []
+    canvas.featureClicked.connect(feature_signals.append)
+    with qtbot.waitSignal(canvas.columnClicked, timeout=1000):
+        qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=QPoint(int(x), int(y)))
+    assert feature_signals == []
