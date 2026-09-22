@@ -30,6 +30,16 @@ class ProjectRepositoryError(RuntimeError):
     pass
 
 
+_BUSY_TIMEOUT_SECONDS = 30.0
+"""How long a write will wait for another lock-holder before giving up and
+raising 'database is locked' (sqlite3's default is only 5s). A single-user
+desktop app should never need this long in normal operation, but the file
+often sits on a OneDrive/Dropbox-synced or network-mapped folder, where the
+OS-level lock a brief antivirus scan or sync-client read takes can outlast
+5s; giving SQLite's own retry loop more room avoids surfacing an error for
+what is really just a transient hold, not a genuine conflict."""
+
+
 class ProjectRepository:
     """One SQLite connection per open project (``.gwbproj`` file)."""
 
@@ -44,7 +54,7 @@ class ProjectRepository:
         if path.exists():
             raise ProjectRepositoryError(f"project file already exists: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(str(path), timeout=_BUSY_TIMEOUT_SECONDS)
         initialize_schema(conn)
         repo = cls(conn)
         repo._insert_project(project)
@@ -56,7 +66,7 @@ class ProjectRepository:
         path = Path(path)
         if not path.exists():
             raise ProjectRepositoryError(f"project file does not exist: {path}")
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(str(path), timeout=_BUSY_TIMEOUT_SECONDS)
         initialize_schema(conn)
         return cls(conn)
 

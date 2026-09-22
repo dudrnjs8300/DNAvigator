@@ -1,6 +1,6 @@
 # DNAvigator 사용자 매뉴얼 (한국어)
 
-버전: 0.6.0 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
+버전: 0.6.1 기준. 이 문서는 실제 구현된 화면과 메뉴만 설명한다 — 존재하지 않는 버튼은 적지 않는다.
 
 ## 1. 설치
 
@@ -208,6 +208,7 @@ Project Explorer에서 정렬 항목을 클릭하면 **Alignment View** 탭이 �
 
 ## 16. 문제 해결
 
+- **"Project File Locked" / "database is locked" 오류가 뜬다**: project 파일(`.gwbproj`)이 OneDrive/Dropbox/Google Drive 등으로 동기화되는 폴더나 네트워크 드라이브에 있으면, 동기화 프로그램이나 백신이 파일을 잠깐 붙잡는 순간과 겹쳐 이 오류가 날 수 있다. 대처법: ① 이 project를 열어놓은 다른 DNAvigator 창이 있다면 닫는다. ② 잠시 후 다시 시도한다(동기화가 끝날 때까지 기다리면 대부분 해결된다). ③ 계속 반복되면 project 파일을 동기화되지 않는 로컬 폴더(예: 바탕화면, `C:\Work` 등)로 옮겨서 사용한다.
 - **프로그램이 시작 시 콘솔 없이 조용히 종료된다**: `%LOCALAPPDATA%\DNAvigator\logs`의 로그 파일을 확인한다.
 - **`DNAvigator.exe --self-test`**: 핵심 구성요소(쓰기 가능한 사용자 폴더, SQLite, FASTA 코덱, Qt) 상태를 점검한다. 결과는 콘솔과 `%LOCALAPPDATA%\DNAvigator\last_self_test_output.json`에 모두 기록된다.
 - **`DNAvigator.exe --diagnostics`**: 버전, OS, Python/Qt/Biopython 버전 등을 JSON으로 출력한다.

@@ -10,6 +10,7 @@
 
 ## Project 관리
 
+- **"database is locked" 사용자 민원을 조사해 고쳤다.** 실사용자가 이 문구를 계속 본다는 제보가 들어와 조사한 결과, 두 가지 문제가 겹쳐 있었다: (1) `sqlite3.connect()`에 timeout을 지정하지 않아 기본값 5초만 기다렸는데, project 파일이 OneDrive/Dropbox 등으로 동기화되는 폴더나 네트워크 드라이브에 있으면 백신·동기화 클라이언트가 파일을 잠깐 붙잡는 것만으로도 5초를 넘겨 바로 에러가 났다. (2) 앱 전체에 `sys.excepthook`이 하나도 설치되어 있지 않아서, BLAST 완료 콜백처럼 try/except로 감싸지 않은 곳에서 이 예외가 나면 windowed 빌드에서는 콘솔이 없어 사용자에게 아무 설명도 없이 조용히 실패하거나(콘솔이 붙어 있는 드문 경우에만) 원문 Python traceback이 그대로 노출되었다. 고친 내용: `ProjectRepository.create_new`/`open_existing`의 SQLite timeout을 30초로 늘렸고(`infrastructure/persistence/sqlite_repository.py`), 앱 시작 시 전역 `sys.excepthook`을 설치해(`infrastructure/error_handling.py`, `app.py`에서 `configure_logging()` 직후 호출) 모든 처리되지 않은 예외를 로그 파일에 남기고 사용자에게 QMessageBox로 보여주며, "database is locked" 케이스는 원인(동기화 폴더/네트워크 드라이브/다른 인스턴스가 동시에 열려 있음)과 대처법을 구체적으로 안내한다. `tests/ui/test_error_handling.py`로 검증.
 - **Record 삭제와 폴더 정리 구현됨.** 이전에는 Project Explorer가 record를 지울 수도, 그룹으로 묶을 수도 없는 평면 목록이었다. 이제 Project Explorer는 실제 중첩 폴더 트리를 지원한다(New Folder/Rename/Move to Folder/Delete Folder — 폴더 삭제는 안의 record/하위 폴더를 절대 지우지 않고 한 단계 위로 옮긴다) + record를 완전히 삭제하는 기능(확인 대화상자 포함, annotation도 함께 정리됨). 기존 project 파일도 schema v1→v2 자동 migration으로 문제없이 열린다. `tests/integration/test_project_service_records_and_folders.py`, `tests/ui/test_project_explorer_folders.py`, `tests/integration/test_sqlite_repository.py`(migration 테스트 포함)로 검증.
 
 ## Annotation
